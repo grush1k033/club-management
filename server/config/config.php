@@ -9,7 +9,7 @@ header('Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit(0);
 }
-$environment = 'production'; // 'local' или 'production'
+$environment = 'local'; // 'local' или 'production'
 
 if ($environment === 'local') {
     define('DB_HOST', 'localhost');

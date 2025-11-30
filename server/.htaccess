@@ -10,6 +10,22 @@ Header always set Access-Control-Max-Age "3600"
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^(.*)$ - [R=200,L]
 
+# ОБХОД DDoS ЗАЩИТЫ INFINITYFREE
+# Правило 1: Для всех API запросов добавляем параметр i=1
+RewriteCond %{REQUEST_URI} ^/server/api/ [NC]
+RewriteCond %{QUERY_STRING} !i=1
+RewriteRule ^(.*)$ /$1?i=1 [L,QSA]
+
+# Правило 2: Прямой доступ к PHP файлам в server папке
+RewriteCond %{REQUEST_URI} ^/server/.*\.php [NC]
+RewriteCond %{QUERY_STRING} !i=1
+RewriteRule ^(.*)$ /$1?i=1 [L,QSA]
+
+# Правило 3: Для конкретных API endpoints
+RewriteCond %{REQUEST_URI} ^/server/api/(users|auth|clubs) [NC]
+RewriteCond %{QUERY_STRING} !i=1
+RewriteRule ^(.*)$ /$1?i=1 [L,QSA]
+
 # Main routing - все запросы идут через index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
