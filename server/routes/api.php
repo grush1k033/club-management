@@ -70,17 +70,6 @@ class ApiRouter {
                 $this->userController->deleteUser($matches[1]);
                 break;
 
-            // Test route
-            case $cleanPath === '/api/test' && $method === 'GET':
-                error_log("Routing to test");
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'API Router is working!',
-                    'path' => $cleanPath,
-                    'method' => $method
-                ]);
-                exit;
-
             default:
                 error_log("ROUTE NOT FOUND");
                 http_response_code(404);

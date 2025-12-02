@@ -5,27 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="52f5d924-51a4-4ee3-99b2-62e0bcea4e97" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/backend/config/config.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/config/database.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/AuthController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/ClubController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/MembershipController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/PaymentController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/ReportController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/controllers/UserController.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/index.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/middleware/AdminMiddleware.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/middleware/AuthMiddleware.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/middleware/ClubOwnerMiddleware.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/models/Club.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/models/Database.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/models/Membership.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/models/Payment.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/models/User.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/routes/api.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/utils/JWT.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/utils/Response.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/utils/Validator.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/routes/api.php" beforeDir="false" afterPath="$PROJECT_DIR$/server/routes/api.php" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,9 +27,9 @@
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="PhpWorkspaceProjectConfiguration" interpreter_name="$PROJECT_DIR$/../../../xampp/php/php.exe" />
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 5
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
   <component name="ProjectId" id="36CHKOSu3Olb03SAisaEO9fhTDx" />
   <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
@@ -57,20 +38,34 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "git-widget-placeholder": "master",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;JavaScript Debug.index.html.executor&quot;: &quot;Run&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;PHP Script.index.php.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/university/ITaWP/club-management&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\university\ITaWP\club-management\server" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\university\ITaWP\club-management" />
+      <recent name="C:\university\ITaWP\club-management\server" />
+      <recent name="C:\university\ITaWP\club-management\server\config" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -86,7 +81,16 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1764503569057</updated>
-      <workItem from="1764503570056" duration="1767000" />
+      <workItem from="1764503570056" duration="12798000" />
+      <workItem from="1764524412931" duration="1150000" />
+      <workItem from="1764526135079" duration="33000" />
+      <workItem from="1764526214965" duration="1000" />
+      <workItem from="1764526552042" duration="842000" />
+      <workItem from="1764527706493" duration="193000" />
+      <workItem from="1764528118961" duration="205000" />
+      <workItem from="1764528497169" duration="35000" />
+      <workItem from="1764528573060" duration="11328000" />
+      <workItem from="1764684661724" duration="1393000" />
     </task>
     <servers />
   </component>
