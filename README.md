@@ -42,8 +42,8 @@ CREATE TABLE users (
 if ($environment === 'local') {
     define('DB_HOST', 'localhost');
     define('DB_NAME', 'club_management');
-    define('DB_USER', 'root');
-    define('DB_PASS', 'unypyrebe');
+    define('DB_USER', 'xxxx');
+    define('DB_PASS', 'xxxxxxxxx');
 
     define('APP_ENV', 'local');
     define('APP_URL', 'http://localhost:8000');
