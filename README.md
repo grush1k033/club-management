@@ -12,7 +12,7 @@
 
 1. **Клонировать репозиторий**
 ```bash
-git clone repository-url](https://github.com/grush1k033/club-management.git)
+git clone https://github.com/grush1k033/club-management.git
 cd club-management
 ```
 ```sql
