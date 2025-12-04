@@ -44,23 +44,14 @@ class User {
     }
 
     public function findByEmail($email) {
-        error_log("=== FIND BY EMAIL ===");
-        error_log("Received email parameter: " . $email); // ДОБАВЬ ЭТУ СТРОКУ
-
         $query = "SELECT * FROM " . $this->table . " WHERE email = ? LIMIT 0,1";
         $stmt = $this->conn->prepare($query);
 
-        // ИСПРАВЬ bindParam на bindValue
         $stmt->bindValue(1, $email, PDO::PARAM_STR);
 
         $stmt->execute();
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        error_log("Query: " . $query);
-        error_log("Email parameter: " . $email);
-        error_log("Row count: " . $stmt->rowCount());
-        error_log("Result: " . json_encode($result));
 
         return $result;
     }
@@ -150,6 +141,5 @@ class User {
 
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
-
 }
 ?>
