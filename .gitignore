@@ -13,4 +13,4 @@ logs/
 
 # Environment files
 .env
-config.local.php
+config.php
