@@ -16,30 +16,63 @@ class ClubController {
         $this->validator = new Validator();
     }
 
-    // Получение списка клубов
+    // Получение ВСЕХ клубов БЕЗ пагинации
     public function getAll($payload) {
-        // Используем $_GET для получения параметров
-        $this->clubModel->page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
-        $this->clubModel->limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int)$_GET['limit'] : 10;
         $this->clubModel->search = isset($_GET['search']) ? $_GET['search'] : '';
         $this->clubModel->category_filter = isset($_GET['category']) ? $_GET['category'] : '';
         $this->clubModel->status_filter = isset($_GET['status']) ? $_GET['status'] : '';
 
-        // Получаем клубы
+        // Получаем ВСЕ клубы
         $clubs = $this->clubModel->readAll();
 
         // Получаем общее количество
-        $total = $this->clubModel->countAll();
+//        $total = $this->clubModel->countAll();
 
         Response::success('Список клубов', [
             'clubs' => $clubs,
-            'pagination' => [
-                'page' => $this->clubModel->page,
-                'limit' => $this->clubModel->limit,
-                'total' => (int)$total,
-                'total_pages' => ceil($total / $this->clubModel->limit)
-            ]
+            'total' => count($clubs) + 1
         ]);
+    }
+
+    // Получить общее количество (для совместимости, но теперь всегда = количество полученных)
+    public function countAll() {
+        $query = "SELECT COUNT(*) as total FROM " . $this->table . " WHERE 1=1";
+
+        $conditions = [];
+        $params = [];
+
+        if (!empty($this->search)) {
+            $conditions[] = "(name LIKE :search OR description LIKE :search_desc)";
+            $searchTerm = "%" . $this->search . "%";
+            $params[':search'] = $searchTerm;
+            $params[':search_desc'] = $searchTerm;
+        }
+
+        if (!empty($this->category_filter)) {
+            $conditions[] = "category = :category";
+            $params[':category'] = $this->category_filter;
+        }
+
+        if (!empty($this->status_filter)) {
+            $conditions[] = "status = :status";
+            $params[':status'] = $this->status_filter;
+        }
+
+        if (!empty($conditions)) {
+            $query .= " AND " . implode(" AND ", $conditions);
+        }
+
+        $stmt = $this->conn->prepare($query);
+
+        // Привязываем параметры
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return (int)($row['total'] || 0);
     }
 
     // Получение клуба по ID (ДОБАВЬТЕ ЭТОТ МЕТОД)

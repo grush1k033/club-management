@@ -24,9 +24,7 @@ class Club {
     public $captain_name;
     public $vice_captain_name;
 
-    // Параметры для фильтрации и пагинации
-    public $page = 1;
-    public $limit = 10;
+    // Параметры для фильтрации (пагинации НЕТ)
     public $search = '';
     public $category_filter = '';
     public $status_filter = '';
@@ -35,7 +33,7 @@ class Club {
         $this->conn = $db;
     }
 
-    // Получить все клубы с пагинацией и фильтрацией
+    // Получить ВСЕ клубы с фильтрацией
     public function readAll() {
         $query = "SELECT c.*, 
                   CONCAT(u1.first_name, ' ', u1.last_name) as captain_name,
@@ -75,28 +73,18 @@ class Club {
         // Сортировка
         $query .= " ORDER BY c.created_at DESC";
 
-        // Пагинация
-        $offset = ($this->page - 1) * $this->limit;
-        $query .= " LIMIT :limit OFFSET :offset";
-        $params[':limit'] = $this->limit;
-        $params[':offset'] = $offset;
-
         $stmt = $this->conn->prepare($query);
 
         // Привязываем параметры
         foreach ($params as $key => $value) {
-            if ($key === ':limit' || $key === ':offset') {
-                $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
-            } else {
-                $stmt->bindValue($key, $value);
-            }
+            $stmt->bindValue($key, $value);
         }
 
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // Получить общее количество для пагинации
+    // Получить общее количество
     public function countAll() {
         $query = "SELECT COUNT(*) as total FROM " . $this->table . " WHERE 1=1";
 
@@ -126,7 +114,6 @@ class Club {
 
         $stmt = $this->conn->prepare($query);
 
-        // Привязываем параметры
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
@@ -154,7 +141,6 @@ class Club {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
-            // Заполняем свойства
             $this->name = $row['name'];
             $this->status = $row['status'];
             $this->description = $row['description'];
@@ -174,8 +160,6 @@ class Club {
         return false;
     }
 
-    // Создать клуб
-    // Создать клуб
     public function create() {
         $query = "INSERT INTO " . $this->table . " 
               SET name = :name, status = :status, description = :description, 
