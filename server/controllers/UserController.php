@@ -17,37 +17,17 @@ class UserController
     }
 
     // GET /api/users - список пользователей (только админ)
-    public function getAllUsers()
-    {
-        try {
-            // Проверяем права администратора
-            $payload = AuthMiddleware::requireRole('admin');
+    public function getAllUsers() {
+        $user = new User($this->db);
 
-            // Получаем параметры пагинации
-            $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
+        // Получаем ВСЕХ пользователей
+        $users = $user->getAll();
+        $total = $user->getTotalCount();
 
-            // Валидация параметров
-            if ($page < 1) $page = 1;
-            if ($limit < 1 || $limit > 100) $limit = 10;
-
-            // Получаем пользователей
-            $users = $this->user->getAll($page, $limit);
-            $total = $this->user->getTotalCount();
-
-            Response::success('Users retrieved successfully', [
-                'users' => $users,
-                'pagination' => [
-                    'page' => $page,
-                    'limit' => $limit,
-                    'total' => $total,
-                    'pages' => ceil($total / $limit)
-                ]
-            ]);
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
+        Response::success("Все пользователи получены", [
+            'users' => $users,
+            'count' => $total
+        ]);
     }
 
     // GET /api/users/{id} - данные пользователя
@@ -85,76 +65,114 @@ class UserController
         }
     }
 
-    // PUT /api/users/{id} - обновление пользователя
-    public function updateUser($id)
-    {
-        try {
-            // Аутентификация
-            $payload = AuthMiddleware::authenticate();
+    // PUT /api/users/{id} - полное обновление
+    public function updateUser($id) {
+        $rawInput = file_get_contents('php://input');
+        $data = json_decode($rawInput, true);
 
-            // Валидация ID
-            if (!Validator::validateNumber($id)) {
-                Response::error('Invalid user ID');
+        if (!$data) {
+            Response::error('Некорректные данные');
+        }
+
+        // Валидация для PUT - все обязательные поля
+        $errors = [];
+
+        if (!isset($data['first_name']) || empty(trim($data['first_name']))) {
+            $errors['first_name'] = 'Имя обязательно для заполнения';
+        }
+
+        if (!isset($data['last_name']) || empty(trim($data['last_name']))) {
+            $errors['last_name'] = 'Фамилия обязательна для заполнения';
+        }
+
+        if (!isset($data['role'])) {
+            $errors['role'] = 'Роль обязательна для заполнения';
+        } else {
+            $allowedRoles = ['admin', 'club_owner', 'member'];
+            if (!in_array($data['role'], $allowedRoles)) {
+                $errors['role'] = 'Роль должна быть одной из: ' . implode(', ', $allowedRoles);
             }
+        }
 
-            // Пользователь может обновить только свои данные, админ - любые
-            if ($payload['role'] !== 'admin' && $payload['user_id'] != $id) {
-                Response::forbidden('Access denied');
+        // phone может быть не обязательным
+        if (isset($data['phone']) && !empty($data['phone']) && !preg_match('/^\+?[0-9\s\-\(\)]{10,}$/', $data['phone'])) {
+            $errors['phone'] = 'Введите корректный номер телефона';
+        }
+
+        if (isset($data['balance']) && (!is_numeric($data['balance']) || $data['balance'] < 0)) {
+            $errors['balance'] = 'Баланс должен быть положительным числом';
+        }
+
+        if (!empty($errors)) {
+            Response::error('Ошибки валидации', $errors, 422);
+        }
+
+        // Обновляем пользователя (полное обновление)
+        $user = new User($this->db);
+        $user->id = $id;
+        $user->first_name = $data['first_name'];
+        $user->last_name = $data['last_name'];
+        $user->phone = $data['phone'] || null;
+        $user->role = $data['role'];
+        $user->is_active = $data['is_active'] || true;
+        $user->balance = $data['balance'] || 0.00;
+        $user->currency = $data['currency'] || 'USD';
+        $user->club_id = $data['club_id'] || null;
+
+        if ($user->update()) {
+            Response::success('Пользователь обновлен (полное обновление)');
+        } else {
+            Response::error('Ошибка при обновлении пользователя');
+        }
+    }
+
+// PATCH /api/users/{id} - частичное обновление
+    public function patchUser($id) {
+        $rawInput = file_get_contents('php://input');
+        $data = json_decode($rawInput, true);
+
+        if (!$data) {
+            Response::error('Некорректные данные');
+        }
+
+        // Валидация для PATCH - только переданные поля
+        $errors = [];
+
+        if (isset($data['first_name']) && empty(trim($data['first_name']))) {
+            $errors['first_name'] = 'Имя не может быть пустым';
+        }
+
+        if (isset($data['last_name']) && empty(trim($data['last_name']))) {
+            $errors['last_name'] = 'Фамилия не может быть пустой';
+        }
+
+        if (isset($data['role'])) {
+            $allowedRoles = ['admin', 'club_owner', 'member'];
+            if (!in_array($data['role'], $allowedRoles)) {
+                $errors['role'] = 'Роль должна быть одной из: ' . implode(', ', $allowedRoles);
             }
+        }
 
-            // Получаем данные из запроса
-            $data = json_decode(file_get_contents("php://input"), true);
+        if (isset($data['phone']) && !empty($data['phone']) && !preg_match('/^\+?[0-9\s\-\(\)]{10,}$/', $data['phone'])) {
+            $errors['phone'] = 'Введите корректный номер телефона';
+        }
 
-            if (!$data) {
-                Response::error('Invalid JSON data');
-            }
+        if (isset($data['balance']) && (!is_numeric($data['balance']) || $data['balance'] < 0)) {
+            $errors['balance'] = 'Баланс должен быть положительным числом';
+        }
 
-            // Валидация данных
-            $validationRules = [
-                'first_name' => 'required|string|min:1|max:50',
-                'last_name' => 'required|string|min:1|max:50',
-                'phone' => 'string|max:20'
-            ];
+        if (!empty($errors)) {
+            Response::error('Ошибки валидации', $errors, 422);
+        }
 
-            // Админ может менять роль
-            if ($payload['role'] === 'admin') {
-                $validationRules['role'] = 'string|in:user,admin,manager';
-                $validationRules['is_active'] = 'boolean';
-            }
+        // Частичное обновление
+        $user = new User($this->db);
+        $user->id = $id;
 
-            $errors = Validator::validate($data, $validationRules);
-            if ($errors) {
-                Response::error('Validation failed', $errors, 400);
-            }
-
-            // Проверяем существование пользователя
-            $existingUser = $this->user->getByIdForAdmin($id);
-            if (!$existingUser) {
-                Response::error('User not found', [], 404);
-            }
-
-            // Обновляем данные
-            $this->user->id = $id;
-            $this->user->first_name = $data['first_name'];
-            $this->user->last_name = $data['last_name'];
-            $this->user->phone = $data['phone'] || $existingUser['phone'];
-
-            // Только админ может менять эти поля
-            if ($payload['role'] === 'admin') {
-                $this->user->role = $data['role'] || $existingUser['role'];
-                $this->user->is_active = $data['is_active'] || $existingUser['is_active'];
-            }
-
-            if ($this->user->update()) {
-                // Получаем обновленные данные
-                $updatedUser = $this->user->getByIdForAdmin($id);
-                Response::success('User updated successfully', $updatedUser);
-            } else {
-                Response::error('Failed to update user');
-            }
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
+        if ($user->partialUpdate($data)) {
+            Response::success('Пользователь обновлен (частичное обновление)');
+        } else {
+            Response::error('Ошибка при обновлении пользователя');
         }
     }
 

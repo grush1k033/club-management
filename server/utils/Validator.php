@@ -120,5 +120,35 @@ class Validator {
     public static function validateBoolean($value) {
         return is_bool($value) || in_array($value, [0, 1, '0', '1', 'true', 'false']);
     }
+
+    public static function validatePaymentData($data) {
+        $errors = [];
+
+        if (empty($data['user_id']) || !is_numeric($data['user_id'])) {
+            $errors[] = "Valid user_id is required";
+        }
+
+        if (empty($data['target_club_id']) || !is_numeric($data['target_club_id'])) {
+            $errors[] = "Valid target_club_id is required";
+        }
+
+        if (empty($data['payment_type']) || !in_array($data['payment_type'], ['club_fee', 'event_fee', 'donation'])) {
+            $errors[] = "Valid payment_type is required (club_fee, event_fee, donation)";
+        }
+
+        if (empty($data['amount']) || !is_numeric($data['amount']) || $data['amount'] <= 0) {
+            $errors[] = "Valid amount is required";
+        }
+
+        if (empty($data['payment_method']) || !in_array($data['payment_method'], ['balance', 'card', 'cash', 'transfer'])) {
+            $errors[] = "Valid payment_method is required";
+        }
+
+        if (!empty($data['event_id']) && !is_numeric($data['event_id'])) {
+            $errors[] = "event_id must be numeric";
+        }
+
+        return $errors;
+    }
 }
 ?>

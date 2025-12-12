@@ -9,8 +9,10 @@ class ClubController {
     private $clubModel;
     private $response;
     private $validator;
+    private $db;
 
     public function __construct($db) {
+        $this->db = $db;
         $this->clubModel = new Club($db);
         $this->response = new Response();
         $this->validator = new Validator();
@@ -165,56 +167,125 @@ class ClubController {
             Response::error('Не удалось создать клуб', [], 500);
         }
     }
+// В классе ClubController добавьте этот метод:
 
-    // Обновление клуба (ДОБАВЬТЕ ЭТОТ МЕТОД, если его нет)
     public function update($clubId, $payload) {
-        $data = json_decode(file_get_contents('php://input'), true);
+        // Получаем данные запроса
+        $rawInput = file_get_contents('php://input');
+        $data = json_decode($rawInput, true);
 
         if (!$data) {
-            Response::error('Неверный формат данных', [], 400);
+            Response::error('Некорректные данные');
         }
 
-        // Проверяем существование клуба
-        $this->clubModel->id = $clubId;
-        $found = $this->clubModel->readOne();
+        // Валидация
+        $errors = [];
 
-        if (!$found) {
+        if (isset($data['name']) && empty(trim($data['name']))) {
+            $errors['name'] = 'Название клуба не может быть пустым';
+        }
+
+        if (isset($data['category']) && empty(trim($data['category']))) {
+            $errors['category'] = 'Категория не может быть пустой';
+        }
+
+        if (isset($data['status']) && !in_array($data['status'], ['Active', 'Inactive'])) {
+            $errors['status'] = 'Статус должен быть Active или Inactive';
+        }
+
+        if (isset($data['captain_id']) && !is_numeric($data['captain_id'])) {
+            $errors['captain_id'] = 'ID капитана должен быть числом';
+        }
+
+        if (isset($data['vice_captain_id']) && !empty($data['vice_captain_id']) && !is_numeric($data['vice_captain_id'])) {
+            $errors['vice_captain_id'] = 'ID заместителя должен быть числом';
+        }
+
+        if (!empty($errors)) {
+            Response::error('Ошибки валидации', $errors, 422);
+        }
+
+        // Обновляем клуб
+        $club = new Club($this->db);
+        $club->id = $clubId;
+
+        // Устанавливаем только переданные поля
+        if (isset($data['name'])) $club->name = $data['name'];
+        if (isset($data['description'])) $club->description = $data['description'];
+        if (isset($data['category'])) $club->category = $data['category'];
+        if (isset($data['email'])) $club->email = $data['email'];
+        if (isset($data['phone'])) $club->phone = $data['phone'];
+        if (isset($data['status'])) $club->status = $data['status'];
+        if (isset($data['captain_id'])) $club->captain_id = $data['captain_id'];
+        if (isset($data['vice_captain_id'])) $club->vice_captain_id = $data['vice_captain_id'];
+
+        if ($club->update()) {
+            Response::success('Клуб обновлен');
+        } else {
+            Response::error('Ошибка при обновлении клуба');
+        }
+    }
+    public function updateClub($clubId, $payload) {
+        // Получаем информацию о клубе
+        $club = new Club($this->db);
+        $club->id = $clubId;
+        $clubData = $club->readOne();
+
+        if (!$clubData) {
             Response::error('Клуб не найден', [], 404);
         }
 
-        // Валидация (только для полей, которые переданы)
-        $rules = [];
-        if (isset($data['name'])) $rules['name'] = 'min:3|max:100';
-        if (isset($data['description'])) $rules['description'] = 'min:10|max:500';
-        if (isset($data['category'])) $rules['category'] = 'min:2|max:50';
-        if (isset($data['email'])) $rules['email'] = 'email';
-        if (isset($data['phone'])) $rules['phone'] = 'min:10|max:20';
-        if (isset($data['captain_id'])) $rules['captain_id'] = 'integer';
-        if (isset($data['vice_captain_id'])) $rules['vice_captain_id'] = 'integer';
-        if (isset($data['status'])) $rules['status'] = 'in:Active,Inactive,Pending';
+        // Проверяем права: капитан клуба или админ
+        // Проблема была здесь: $clubData может быть false или не содержать 'captain_id'
+        $isCaptain = isset($clubData['captain_id']) && ($payload['user_id'] == $clubData['captain_id']);
+        $isAdmin = ($payload['role'] === 'admin');
 
-        $errors = $this->validator->validate($data, $rules);
-        if (!empty($errors)) {
-            Response::error('Ошибка валидации', $errors, 400);
+        if (!$isAdmin && !$isCaptain) {
+            Response::forbidden('Только капитан клуба или администратор могут обновлять информацию о клубе');
         }
 
-        // Обновляем только переданные поля
-        if (isset($data['name'])) $this->clubModel->name = $data['name'];
-        if (isset($data['description'])) $this->clubModel->description = $data['description'];
-        if (isset($data['category'])) $this->clubModel->category = $data['category'];
-        if (isset($data['email'])) $this->clubModel->email = $data['email'];
-        if (isset($data['phone'])) $this->clubModel->phone = $data['phone'];
-        if (isset($data['captain_id'])) $this->clubModel->captain_id = $data['captain_id'];
-        if (isset($data['vice_captain_id'])) $this->clubModel->vice_captain_id = $data['vice_captain_id'];
-        if (isset($data['status'])) $this->clubModel->status = $data['status'];
+        // Получаем данные запроса
+        $rawInput = file_get_contents('php://input');
+        $data = json_decode($rawInput, true);
+
+        if (!$data) {
+            Response::error('Некорректные данные');
+        }
+
+        // Валидация
+        $errors = [];
+
+        if (isset($data['name']) && empty(trim($data['name']))) {
+            $errors['name'] = 'Название клуба не может быть пустым';
+        }
+
+        if (isset($data['category']) && empty(trim($data['category']))) {
+            $errors['category'] = 'Категория не может быть пустой';
+        }
+
+        if (isset($data['status']) && !in_array($data['status'], ['Active', 'Inactive'])) {
+            $errors['status'] = 'Статус должен быть Active или Inactive';
+        }
+
+        if (!empty($errors)) {
+            Response::error('Ошибки валидации', $errors, 422);
+        }
 
         // Обновляем клуб
-        $updated = $this->clubModel->update();
+        $club = new Club($this->db);
+        $club->id = $clubId;
 
-        if ($updated) {
-            Response::success('Клуб успешно обновлен', [], 200);
+        if (isset($data['name'])) $club->name = $data['name'];
+        if (isset($data['description'])) $club->description = $data['description'];
+        if (isset($data['category'])) $club->category = $data['category'];
+        if (isset($data['email'])) $club->email = $data['email'];
+        if (isset($data['phone'])) $club->phone = $data['phone'];
+        if (isset($data['status'])) $club->status = $data['status'];
+
+        if ($club->update()) {
+            Response::success('Клуб обновлен');
         } else {
-            Response::error('Не удалось обновить клуб', [], 500);
+            Response::error('Ошибка при обновлении клуба');
         }
     }
 
@@ -288,5 +359,94 @@ class ClubController {
         } else {
             Response::error('Не удалось изменить статус клуба', [], 500);
         }
+    }
+
+    // server/controllers/ClubController.php
+
+// Подать заявку на вступление в клуб (с оплатой)
+    public function requestToJoin($clubId) {
+        $payload = AuthMiddleware::authenticate();
+        $userId = $payload['user_id'];
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        // Проверяем, что пользователь не в клубе
+        $userQuery = "SELECT club_id FROM users WHERE id = :user_id";
+        $userStmt = $this->db->prepare($userQuery);
+        $userStmt->execute([':user_id' => $userId]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($user['club_id'] !== null) {
+            return Response::error("You already belong to a club. Leave current club first.", 400);
+        }
+
+        // Проверяем существование клуба
+        $clubQuery = "SELECT id FROM clubs WHERE id = :club_id AND status = 'Active'";
+        $clubStmt = $this->db->prepare($clubQuery);
+        $clubStmt->execute([':club_id' => $clubId]);
+        $club = $clubStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$club) {
+            return Response::error("Club not found or inactive", 404);
+        }
+
+        // Проверяем, нет ли активной заявки
+        $activeRequestQuery = "SELECT id FROM club_join_requests 
+                          WHERE user_id = :user_id 
+                          AND club_id = :club_id 
+                          AND status = 'pending'";
+        $activeStmt = $this->db->prepare($activeRequestQuery);
+        $activeStmt->execute([
+            ':user_id' => $userId,
+            ':club_id' => $clubId
+        ]);
+
+        if ($activeStmt->rowCount() > 0) {
+            return Response::error("You already have a pending request to this club", 400);
+        }
+
+        // Создаем заявку
+        $query = "INSERT INTO club_join_requests 
+              (user_id, club_id, message) 
+              VALUES (:user_id, :club_id, :message)";
+
+        $stmt = $this->db->prepare($query);
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':club_id' => $clubId,
+            ':message' => $data['message'] || 'Request to join club'
+        ]);
+
+        $requestId = $this->db->lastInsertId();
+
+        return Response::success([
+            'request_id' => $requestId,
+            'message' => 'Join request submitted. Please pay the joining fee to complete.',
+            'next_step' => 'pay_joining_fee'
+        ], "Join request created", 201);
+    }
+
+    // server/controllers/ClubController.php
+    public function leaveClub($clubId) {
+        $payload = AuthMiddleware::authenticate();
+        $userId = $payload['user_id'];
+
+        // Проверяем, что пользователь состоит в этом клубе
+        $checkQuery = "SELECT id FROM users WHERE id = :user_id AND club_id = :club_id";
+        $checkStmt = $this->db->prepare($checkQuery);
+        $checkStmt->execute([
+            ':user_id' => $userId,
+            ':club_id' => $clubId
+        ]);
+
+        if ($checkStmt->rowCount() === 0) {
+            return Response::error("You are not a member of this club", 400);
+        }
+
+        // Обновляем club_id пользователя на NULL
+        $updateQuery = "UPDATE users SET club_id = NULL, updated_at = NOW() WHERE id = :user_id";
+        $updateStmt = $this->db->prepare($updateQuery);
+        $updateStmt->execute([':user_id' => $userId]);
+
+        return Response::success(null, "Successfully left the club");
     }
 }

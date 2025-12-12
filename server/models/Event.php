@@ -1,10 +1,11 @@
 <?php
+require_once __DIR__ . '/../utils/Response.php';
 class Event {
     private $db;
     private $table = 'events';
 
     public function __construct($db) {
-        $this->db = $db;
+        $this->conn = $db;
     }
 
     /**
@@ -98,7 +99,7 @@ class Event {
      */
     public function isUserParticipant($event_id, $user_id) {
         $query = "SELECT id FROM event_participants 
-                  WHERE event_id = :event_id AND user_id = :user_id";
+              WHERE event_id = :event_id AND user_id = :user_id";
         $stmt = $this->db->prepare($query);
         $stmt->bindParam(':event_id', $event_id);
         $stmt->bindParam(':user_id', $user_id);
@@ -192,6 +193,73 @@ class Event {
         $stmt->bindParam(':id', $id);
 
         return $stmt->execute();
+    }
+
+    // В models/Event.php добавьте:
+
+    public function getEventsByUserId($userId) {
+        $query = "SELECT e.*, 
+                         c.name as club_name,
+                         c.id as club_id,
+                         ep.status as participation_status,
+                         ep.registration_date,
+                         ep.attended_at
+                  FROM events e
+                  INNER JOIN event_participants ep ON e.id = ep.event_id
+                  INNER JOIN clubs c ON e.club_id = c.id
+                  WHERE ep.user_id = :user_id
+                  ORDER BY e.event_date DESC";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':user_id', $userId);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // Получить предстоящие мероприятия по ID пользователя
+    public function getUpcomingEventsByUserId($userId) {
+        $query = "SELECT e.*, 
+                         c.name as club_name,
+                         c.id as club_id,
+                         ep.status as participation_status,
+                         ep.registration_date
+                  FROM events e
+                  INNER JOIN event_participants ep ON e.id = ep.event_id
+                  INNER JOIN clubs c ON e.club_id = c.id
+                  WHERE ep.user_id = :user_id 
+                    AND e.event_date >= NOW()
+                    AND e.status IN ('scheduled', 'ongoing')
+                    AND ep.status != 'cancelled'
+                  ORDER BY e.event_date ASC";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':user_id', $userId);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // Получить прошедшие мероприятия по ID пользователя
+    public function getPastEventsByUserId($userId) {
+        $query = "SELECT e.*, 
+                         c.name as club_name,
+                         c.id as club_id,
+                         ep.status as participation_status,
+                         ep.registration_date,
+                         ep.attended_at
+                  FROM events e
+                  INNER JOIN event_participants ep ON e.id = ep.event_id
+                  INNER JOIN clubs c ON e.club_id = c.id
+                  WHERE ep.user_id = :user_id 
+                    AND (e.event_date < NOW() OR e.status IN ('completed', 'cancelled'))
+                  ORDER BY e.event_date DESC";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':user_id', $userId);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
 ?>

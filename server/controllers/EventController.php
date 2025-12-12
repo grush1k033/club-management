@@ -239,6 +239,18 @@ class EventController {
                 Response::error('Некорректный ID мероприятия');
             }
 
+            // Получаем правильный user_id из JWT payload
+            $userId = null;
+            if (isset($user['user_id']) && !empty($user['user_id'])) {
+                $userId = $user['user_id'];
+            } elseif (isset($user['id']) && !empty($user['id'])) {
+                $userId = $user['id'];
+            }
+
+            if (!$userId) {
+                Response::error('Не удалось определить ID пользователя', null, 400);
+            }
+
             // Проверяем существует ли мероприятие
             $event = $this->eventModel->getById($eventId);
             if (!$event) {
@@ -247,7 +259,7 @@ class EventController {
 
             // Проверяем максимальное количество участников
             $query = "SELECT COUNT(*) as count FROM event_participants 
-                      WHERE event_id = :event_id AND status != 'cancelled'";
+                  WHERE event_id = :event_id AND status != 'cancelled'";
             $stmt = $this->db->prepare($query);
             $stmt->bindParam(':event_id', $eventId);
             $stmt->execute();
@@ -258,17 +270,17 @@ class EventController {
             }
 
             // Проверяем, не зарегистрирован ли уже пользователь
-            if ($this->eventModel->isUserParticipant($eventId, $user['id'])) {
+            if ($this->eventModel->isUserParticipant($eventId, $userId)) {
                 Response::error('Вы уже зарегистрированы на это мероприятие');
             }
 
             // Регистрируем пользователя
             $query = "INSERT INTO event_participants (event_id, user_id, status) 
-                      VALUES (:event_id, :user_id, 'registered')";
+                  VALUES (:event_id, :user_id, 'registered')";
 
             $stmt = $this->db->prepare($query);
             $stmt->bindParam(':event_id', $eventId);
-            $stmt->bindParam(':user_id', $user['id']);
+            $stmt->bindParam(':user_id', $userId);
 
             if ($stmt->execute()) {
                 Response::success('Вы успешно зарегистрированы на мероприятие');
@@ -293,17 +305,22 @@ class EventController {
                 Response::error('Некорректный ID мероприятия');
             }
 
+            $userId = $user['user_id'] || $user['id'] || null;
+            if (!$userId) {
+                Response::error('Не удалось определить ID пользователя', null, 400);
+            }
+
             // Отменяем регистрацию
             $query = "UPDATE event_participants 
-                      SET status = 'cancelled', 
-                          attended_at = NULL 
-                      WHERE event_id = :event_id 
-                      AND user_id = :user_id 
-                      AND status = 'registered'";
+                  SET status = 'cancelled', 
+                      attended_at = NULL 
+                  WHERE event_id = :event_id 
+                  AND user_id = :user_id 
+                  AND status = 'registered'";
 
             $stmt = $this->db->prepare($query);
             $stmt->bindParam(':event_id', $eventId);
-            $stmt->bindParam(':user_id', $user['id']);
+            $stmt->bindParam(':user_id', $userId);
             $stmt->execute();
 
             if ($stmt->rowCount() > 0) {
@@ -325,7 +342,12 @@ class EventController {
         try {
             $user = AuthMiddleware::authenticate();
 
-            $events = $this->eventModel->getUserEvents($user['id']);
+            $userId = $user['user_id'] || $user['id'] || null;
+            if (!$userId) {
+                Response::error('Не удалось определить ID пользователя', null, 400);
+            }
+
+            $events = $this->eventModel->getUserEvents($userId);
             Response::success('Ваши мероприятия', $events);
 
         } catch (Exception $e) {
@@ -341,18 +363,23 @@ class EventController {
         try {
             $user = AuthMiddleware::authenticate();
 
+            $userId = $user['user_id'] || $user['id'] || null;
+            if (!$userId) {
+                Response::error('Не удалось определить ID пользователя', null, 400);
+            }
+
             $query = "SELECT e.*, c.name as club_name, ep.status as participation_status
-                      FROM events e
-                      JOIN event_participants ep ON e.id = ep.event_id
-                      JOIN clubs c ON e.club_id = c.id
-                      WHERE ep.user_id = :user_id 
-                      AND ep.status = 'registered'
-                      AND e.status IN ('scheduled', 'ongoing')
-                      AND e.event_date >= NOW()
-                      ORDER BY e.event_date ASC";
+                  FROM events e
+                  JOIN event_participants ep ON e.id = ep.event_id
+                  JOIN clubs c ON e.club_id = c.id
+                  WHERE ep.user_id = :user_id 
+                  AND ep.status = 'registered'
+                  AND e.status IN ('scheduled', 'ongoing')
+                  AND e.event_date >= NOW()
+                  ORDER BY e.event_date ASC";
 
             $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':user_id', $user['id']);
+            $stmt->bindParam(':user_id', $userId);
             $stmt->execute();
 
             $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -554,16 +581,21 @@ class EventController {
         try {
             $user = AuthMiddleware::authenticate();
 
+            $userId = $user['user_id'] || $user['id'] || null;
+            if (!$userId) {
+                Response::error('Не удалось определить ID пользователя', null, 400);
+            }
+
             $query = "SELECT e.*, c.name as club_name, ep.status as participation_status
-                      FROM events e
-                      JOIN event_participants ep ON e.id = ep.event_id
-                      JOIN clubs c ON e.club_id = c.id
-                      WHERE ep.user_id = :user_id 
-                      AND e.status = 'completed'
-                      ORDER BY e.event_date DESC";
+                  FROM events e
+                  JOIN event_participants ep ON e.id = ep.event_id
+                  JOIN clubs c ON e.club_id = c.id
+                  WHERE ep.user_id = :user_id 
+                  AND e.status = 'completed'
+                  ORDER BY e.event_date DESC";
 
             $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':user_id', $user['id']);
+            $stmt->bindParam(':user_id', $userId);
             $stmt->execute();
 
             $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -737,24 +769,80 @@ class EventController {
         }
     }
 
-    public function debugInput() {
-        $raw = file_get_contents('php://input');
+// В EventController добавьте эти методы:
 
-        echo "=== DEBUG INPUT ===<br>";
-        echo "Raw length: " . strlen($raw) . "<br>";
-        echo "Raw content: " . htmlspecialchars($raw) . "<br><br>";
+// Получить мероприятия конкретного пользователя (для админа)
+    public function getUserEventsAdmin($userId) {
+        // Проверяем существование пользователя
+        $userModel = new User($this->db);
+        $user = $userModel->getByIdForAdmin($userId);
 
-        $json = json_decode($raw, true);
-        echo "JSON decode error: " . json_last_error_msg() . "<br>";
-        echo "JSON result: ";
-        print_r($json);
-        echo "<br><br>";
+        if (!$user) {
+            Response::error('Пользователь не найден', [], 404);
+        }
 
-        echo "POST array: ";
-        print_r($_POST);
-        echo "<br><br>";
+        // Получаем мероприятия пользователя
+        $eventModel = new Event($this->db);
+        $events = $eventModel->getEventsByUserId($userId);
 
-        echo "SERVER CONTENT_TYPE: " . ($_SERVER['CONTENT_TYPE'] || 'not set');
+        Response::success('Мероприятия пользователя', [
+            'user' => [
+                'id' => $user['id'],
+                'email' => $user['email'],
+                'first_name' => $user['first_name'],
+                'last_name' => $user['last_name']
+            ],
+            'events' => $events,
+            'count' => count($events)
+        ]);
+    }
+
+// Получить предстоящие мероприятия пользователя (для админа)
+    public function getUpcomingEventsAdmin($userId) {
+        $userModel = new User($this->db);
+        $user = $userModel->getByIdForAdmin($userId);
+
+        if (!$user) {
+            Response::error('Пользователь не найден', [], 404);
+        }
+
+        $eventModel = new Event($this->db);
+        $events = $eventModel->getUpcomingEventsByUserId($userId);
+
+        Response::success('Предстоящие мероприятия пользователя', [
+            'user' => [
+                'id' => $user['id'],
+                'email' => $user['email'],
+                'first_name' => $user['first_name'],
+                'last_name' => $user['last_name']
+            ],
+            'events' => $events,
+            'count' => count($events)
+        ]);
+    }
+
+// Получить прошедшие мероприятия пользователя (для админа)
+    public function getPastEventsAdmin($userId) {
+        $userModel = new User($this->db);
+        $user = $userModel->getByIdForAdmin($userId);
+
+        if (!$user) {
+            Response::error('Пользователь не найден', [], 404);
+        }
+
+        $eventModel = new Event($this->db);
+        $events = $eventModel->getPastEventsByUserId($userId);
+
+        Response::success('Прошедшие мероприятия пользователя', [
+            'user' => [
+                'id' => $user['id'],
+                'email' => $user['email'],
+                'first_name' => $user['first_name'],
+                'last_name' => $user['last_name']
+            ],
+            'events' => $events,
+            'count' => count($events)
+        ]);
     }
 }
 ?>
