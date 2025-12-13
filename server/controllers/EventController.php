@@ -878,5 +878,73 @@ class EventController {
         }
     }
 
+    // server/controllers/EventController.php
+    public function searchEvents($searchTerm, $payload) {
+        try {
+            $query = "
+        SELECT 
+            e.id AS event_id,
+            e.title AS event_name,
+            c.name AS club_name,
+            c.id AS club_id,
+            e.event_date AS event_datetime,
+            e.max_participants,
+            e.status AS event_status,
+            e.external_fee_amount AS ticket_price,
+            e.external_fee_currency AS currency,
+            e.location,
+            e.description AS event_description,
+            e.is_free_for_members AS free_for_members,
+            (SELECT COUNT(*) FROM event_participants ep WHERE ep.event_id = e.id AND ep.status = 'registered') AS registered_count
+        FROM events e
+        JOIN clubs c ON e.club_id = c.id
+        WHERE (:search_term IS NULL OR 
+               e.title LIKE CONCAT('%', :search_term, '%') OR
+               e.description LIKE CONCAT('%', :search_term, '%') OR
+               e.location LIKE CONCAT('%', :search_term, '%') OR
+               c.name LIKE CONCAT('%', :search_term, '%'))
+        ORDER BY e.event_date DESC
+        LIMIT 20
+        ";
+
+            $stmt = $this->db->prepare($query);
+            $searchParam = empty($searchTerm) ? null : '%' . $searchTerm . '%';
+            $stmt->bindParam(':search_term', $searchParam);
+            $stmt->execute();
+
+            $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Форматируем результат
+            $formattedEvents = array_map(function($event) {
+                return [
+                    'event_id' => (int)$event['event_id'],
+                    'event_name' => $event['event_name'],
+                    'club_name' => $event['club_name'],
+                    'club_id' => (int)$event['club_id'],
+                    'event_datetime' => $event['event_datetime'],
+                    'max_participants' => $event['max_participants'] ? (int)$event['max_participants'] : null,
+                    'event_status' => $event['event_status'],
+                    'ticket_price' => (float)$event['ticket_price'],
+                    'currency' => $event['currency'],
+                    'location' => $event['location'],
+                    'free_for_members' => (bool)$event['free_for_members'],
+                    'registered_count' => (int)$event['registered_count'],
+                    'occupancy_rate' => $event['max_participants']
+                        ? round(($event['registered_count'] * 100.0) / $event['max_participants'], 1) . '%'
+                        : 'N/A'
+                ];
+            }, $events);
+
+            Response::success('Результаты поиска ивентов', [
+                'search_term' => $searchTerm,
+                'events' => $formattedEvents,
+                'total' => count($formattedEvents)
+            ]);
+
+        } catch (Exception $e) {
+            Response::error('Ошибка при поиске ивентов: ' . $e->getMessage(), [], 500);
+        }
+    }
+
 }
 ?>

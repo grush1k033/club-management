@@ -68,6 +68,14 @@ class ApiRouter {
                 $this->userController->getUsersDetailedReport($payload);
                 break;
 
+            case preg_match('#^/api/members/search(?:\?.*)?$#', $cleanPath) && $method === 'GET':
+                $payload = AuthMiddleware::authenticate();
+
+                $searchTerm = isset($_GET['query']) ? trim($_GET['query']) : '';
+
+                $this->userController->searchMembers($searchTerm, $payload);
+                break;
+
 
             case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
                 $userId = $matches[1];
@@ -122,6 +130,13 @@ class ApiRouter {
             case $cleanPath === '/api/stats/platform' && $method === 'GET':
                 $payload = AuthMiddleware::authenticate(); // Проверка авторизации
                 $this->clubController->getPlatformStats($payload);
+                break;
+
+            // Поиск клубов
+            case preg_match('#^/api/clubs/search(?:\?.*)?$#', $cleanPath) && $method === 'GET':
+                $payload = AuthMiddleware::authenticate();
+                $searchTerm = isset($_GET['query']) ? trim($_GET['query']) : '';
+                $this->clubController->searchClubs($searchTerm, $payload);
                 break;
 
             case preg_match('#^/api/clubs/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
@@ -198,8 +213,11 @@ class ApiRouter {
                 $this->eventController->getEventsReport();
                 break;
 
-            case $cleanPath === '/api/events/test' && $method === 'POST':
-                $this->eventController->createSimple();
+            // Поиск ивентов
+            case preg_match('#^/api/events/search(?:\?.*)?$#', $cleanPath) && $method === 'GET':
+                $payload = AuthMiddleware::authenticate();
+                $searchTerm = isset($_GET['query']) ? trim($_GET['query']) : '';
+                $this->eventController->searchEvents($searchTerm, $payload);
                 break;
 
             case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'GET':

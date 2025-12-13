@@ -564,4 +564,76 @@ class ClubController {
             Response::error('Ошибка при получении статистики: ' . $e->getMessage(), [], 500);
         }
     }
+
+    // server/controllers/ClubController.php
+    public function searchClubs($searchTerm, $payload) {
+        try {
+            $query = "
+        SELECT 
+            c.id AS club_id,
+            c.name AS club_name,
+            c.status AS club_status,
+            c.category AS club_category,
+            c.description AS club_description,
+            c.email AS club_email,
+            c.phone AS club_phone,
+            CONCAT(captain.first_name, ' ', captain.last_name) AS captain_name,
+            captain.email AS captain_email,
+            captain.phone AS captain_phone,
+            CONCAT(vice_captain.first_name, ' ', vice_captain.last_name) AS vice_captain_name,
+            (SELECT COUNT(*) FROM users WHERE club_id = c.id) AS members_count,
+            (SELECT COUNT(*) FROM events WHERE club_id = c.id) AS events_count,
+            c.created_at,
+            c.updated_at
+        FROM clubs c
+        LEFT JOIN users captain ON captain.id = c.captain_id
+        LEFT JOIN users vice_captain ON vice_captain.id = c.vice_captain_id
+        WHERE (:search_term IS NULL OR 
+               c.name LIKE CONCAT('%', :search_term, '%') OR
+               c.description LIKE CONCAT('%', :search_term, '%') OR
+               c.category LIKE CONCAT('%', :search_term, '%') OR
+               captain.first_name LIKE CONCAT('%', :search_term, '%') OR
+               captain.last_name LIKE CONCAT('%', :search_term, '%'))
+        ORDER BY c.name ASC
+        LIMIT 20
+        ";
+
+            $stmt = $this->db->prepare($query);
+            $searchParam = empty($searchTerm) ? null : '%' . $searchTerm . '%';
+            $stmt->bindParam(':search_term', $searchParam);
+            $stmt->execute();
+
+            $clubs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Форматируем результат
+            $formattedClubs = array_map(function($club) {
+                return [
+                    'club_id' => (int)$club['club_id'],
+                    'club_name' => $club['club_name'],
+                    'club_status' => $club['club_status'],
+                    'club_category' => $club['club_category'],
+                    'club_description' => $club['club_description'],
+                    'club_email' => $club['club_email'],
+                    'club_phone' => $club['club_phone'],
+                    'captain_name' => $club['captain_name'],
+                    'captain_email' => $club['captain_email'],
+                    'captain_phone' => $club['captain_phone'],
+                    'vice_captain_name' => $club['vice_captain_name'],
+                    'members_count' => (int)$club['members_count'],
+                    'events_count' => (int)$club['events_count'],
+                    'created_at' => $club['created_at'],
+                    'updated_at' => $club['updated_at']
+                ];
+            }, $clubs);
+
+            Response::success('Результаты поиска клубов', [
+                'search_term' => $searchTerm,
+                'clubs' => $formattedClubs,
+                'total' => count($formattedClubs)
+            ]);
+
+        } catch (Exception $e) {
+            Response::error('Ошибка при поиске клубов: ' . $e->getMessage(), [], 500);
+        }
+    }
 }
