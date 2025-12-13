@@ -357,7 +357,6 @@ class EventController {
             Response::error('Ошибка: ' . $e->getMessage(), null, 500);
         }
     }
-
     public function deleteMultipleEvents()
     {
         try {
@@ -439,6 +438,152 @@ class EventController {
                     ];
                 }, $events)
             ]);
+
+        } catch (PDOException $e) {
+            Response::error('Ошибка базы данных: ' . $e->getMessage(), null, 500);
+        } catch (Exception $e) {
+            Response::error('Ошибка: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    public function updateEvent($eventId)
+    {
+        try {
+            // Аутентификация
+            $user = AuthMiddleware::authenticate();
+
+            // Проверяем права
+            if (!in_array($user['role'], ['admin', 'club_owner'])) {
+                Response::error('Недостаточно прав для изменения события', null, 403);
+            }
+
+            // Получаем данные из запроса
+            $input = file_get_contents('php://input');
+            if (empty($input)) {
+                Response::error('Тело запроса пустое', null, 400);
+            }
+
+            $data = json_decode($input, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Response::error('Неверный JSON формат', null, 400);
+            }
+
+            // Проверяем существование события
+            $eventQuery = "SELECT e.*, c.captain_id, c.vice_captain_id 
+                      FROM events e 
+                      JOIN clubs c ON e.club_id = c.id 
+                      WHERE e.id = ?";
+
+            $stmt = $this->db->prepare($eventQuery);
+            $stmt->execute([$eventId]);
+            $event = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$event) {
+                Response::error('Событие не найдено', null, 404);
+            }
+
+            // Проверяем права club_owner
+            if ($user['role'] === 'club_owner') {
+                if ($user['id'] != $event['captain_id'] && $user['id'] != $event['vice_captain_id']) {
+                    Response::error('Вы не можете изменять события этого клуба', null, 403);
+                }
+            }
+
+
+
+            // Подготавливаем данные для обновления
+            $updateFields = [];
+            $updateParams = [];
+
+            // Поля, которые можно обновлять
+            $allowedFields = [
+                'title', 'description', 'event_date', 'location',
+                'max_participants', 'external_fee_amount', 'external_fee_currency',
+                'is_free_for_members', 'status'
+            ];
+
+            foreach ($allowedFields as $field) {
+                if (isset($data[$field])) {
+                    // Валидация для конкретных полей
+                    if ($field === 'event_date') {
+                        $dateTime = strtotime($data[$field]);
+                        if ($dateTime === false) {
+                            Response::error('Неверный формат даты', null, 400);
+                        }
+                        $updateFields[] = "$field = ?";
+                        $updateParams[] = date('Y-m-d H:i:s', $dateTime);
+                    } elseif ($field === 'max_participants') {
+                        $value = (int)$data[$field];
+                        if ($value < 0) {
+                            Response::error('Количество участников не может быть отрицательным', null, 400);
+                        }
+                        $updateFields[] = "$field = ?";
+                        $updateParams[] = $value > 0 ? $value : null;
+                    } elseif ($field === 'external_fee_amount') {
+                        $value = (float)$data[$field];
+                        if ($value < 0) {
+                            Response::error('Стоимость не может быть отрицательной', null, 400);
+                        }
+                        $updateFields[] = "$field = ?";
+                        $updateParams[] = $value;
+                    } elseif ($field === 'status' && !in_array($data[$field], ['scheduled', 'ongoing', 'completed', 'cancelled'])) {
+                        Response::error('Некорректный статус события', null, 400);
+                    } else {
+                        $updateFields[] = "$field = ?";
+                        $updateParams[] = $data[$field];
+                    }
+                }
+            }
+
+            // Если нет полей для обновления
+            if (empty($updateFields)) {
+                Response::error('Нет данных для обновления', null, 400);
+            }
+
+            // Добавляем обновление времени и ID события
+            $updateFields[] = "updated_at = NOW()";
+
+            // Выполняем обновление
+            $updateQuery = "UPDATE events SET " . implode(', ', $updateFields) . " WHERE id = ?";
+            $updateParams[] = $eventId;
+
+            $stmt = $this->db->prepare($updateQuery);
+            $stmt->execute($updateParams);
+
+            // Получаем обновленные данные события
+            $updatedEventQuery = "SELECT 
+                e.id AS event_id,
+                e.title AS event_name,
+                c.id AS club_id,
+                c.name AS club_name,
+                e.event_date AS event_datetime,
+                e.max_participants,
+                e.status AS event_status,
+                e.external_fee_amount AS ticket_price,
+                e.external_fee_currency AS currency,
+                e.description,
+                e.location,
+                e.is_free_for_members,
+                e.created_at,
+                e.updated_at
+            FROM events e
+            JOIN clubs c ON e.club_id = c.id
+            WHERE e.id = ?";
+
+            $stmt = $this->db->prepare($updatedEventQuery);
+            $stmt->execute([$eventId]);
+            $updatedEvent = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Форматируем ответ
+            if ($updatedEvent) {
+                $updatedEvent['event_id'] = (int)$updatedEvent['event_id'];
+                $updatedEvent['club_id'] = (int)$updatedEvent['club_id'];
+                $updatedEvent['max_participants'] = $updatedEvent['max_participants'] ? (int)$updatedEvent['max_participants'] : null;
+                $updatedEvent['ticket_price'] = (float)$updatedEvent['ticket_price'];
+                $updatedEvent['is_free_for_members'] = (bool)$updatedEvent['is_free_for_members'];
+            }
+
+            Response::success('Событие успешно обновлено', $updatedEvent);
 
         } catch (PDOException $e) {
             Response::error('Ошибка базы данных: ' . $e->getMessage(), null, 500);

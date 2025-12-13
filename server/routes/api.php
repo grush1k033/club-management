@@ -205,6 +205,12 @@ class ApiRouter {
                 $this->eventController->deleteMultipleEvents();
                 break;
 
+            // UPDATE
+            case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'PATCH':
+                $eventId = $matches[1];
+                $this->eventController->updateEvent($eventId);
+                break;
+
             // ================================
             // PAYMENT ROUTES
             // ================================
