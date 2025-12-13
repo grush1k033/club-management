@@ -63,6 +63,12 @@ class ApiRouter {
                 $this->userController->getAllUsers();
                 break;
 
+            case $cleanPath === '/api/reports/users-detailed' && $method === 'GET':
+                $payload = AuthMiddleware::authenticate();
+                $this->userController->getUsersDetailedReport($payload);
+                break;
+
+
             case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
                 $userId = $matches[1];
                 $payload = AuthMiddleware::authenticate();
