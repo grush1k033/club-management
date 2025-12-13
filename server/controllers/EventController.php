@@ -161,17 +161,19 @@ class EventController {
     public function getEventsReport()
     {
         $query = "SELECT 
-            e.id AS event_id,
             e.title AS event_name,
             c.name AS club_name,
             e.event_date AS event_datetime,
             e.max_participants,
             e.status AS event_status,
             e.external_fee_amount AS ticket_price,
-            e.external_fee_currency AS currency
-        FROM events e
-        JOIN clubs c ON e.club_id = c.id
-        ORDER BY e.event_date DESC";
+            e.external_fee_currency AS currency,
+            COUNT(ep.id) AS registered_count
+          FROM events e
+          JOIN clubs c ON e.club_id = c.id
+          LEFT JOIN event_participants ep ON e.id = ep.event_id AND ep.status = 'registered'
+          GROUP BY e.id
+          ORDER BY e.event_date DESC";
 
         try {
             $stmt = $this->db->prepare($query);
@@ -181,10 +183,6 @@ class EventController {
             // Форматируем дату
             foreach ($events as &$event) {
                 $event['event_datetime'] = date('Y-m-d H:i:s', strtotime($event['event_datetime']));
-                // Приводим типы данных
-                $event['event_id'] = (int)$event['event_id'];
-                $event['max_participants'] = $event['max_participants'] ? (int)$event['max_participants'] : null;
-                $event['ticket_price'] = (float)$event['ticket_price'];
             }
 
             Response::success('Данные о событиях успешно получены', $events);
