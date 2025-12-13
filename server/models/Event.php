@@ -11,54 +11,6 @@ class Event
         $this->db = $db;
     }
 
-    /**
-     * Создать мероприятие
-     */
-    /**
-     * Создать мероприятие
-     */
-    public function create($data)
-    {
-        // Подготавливаем значения перед bindParam
-        $club_id = $data['club_id'] || null;
-        $title = $data['title'] || '';
-        $description = $data['description'] || '';
-        $event_date = $data['event_date'] || null;
-        $location = $data['location'] || '';
-        $status = $data['status'] || 'scheduled';
-        $max_participants = $data['max_participants'] || null;
-        $created_by = $data['created_by'] || null;
-
-        $query = "INSERT INTO " . $this->table . " 
-              SET club_id = :club_id, 
-                  title = :title, 
-                  description = :description, 
-                  event_date = :event_date, 
-                  location = :location, 
-                  status = :status,
-                  max_participants = :max_participants,
-                  created_by = :created_by";
-
-        $stmt = $this->db->prepare($query);
-
-        // Привязка параметров (важно: передаем переменные, а не выражения)
-        $stmt->bindParam(':club_id', $club_id);
-        $stmt->bindParam(':title', $title);
-        $stmt->bindParam(':description', $description);
-        $stmt->bindParam(':event_date', $event_date);
-        $stmt->bindParam(':location', $location);
-        $stmt->bindParam(':status', $status);
-
-        if ($max_participants !== null) {
-            $stmt->bindParam(':max_participants', $max_participants, PDO::PARAM_INT);
-        } else {
-            $stmt->bindValue(':max_participants', null, PDO::PARAM_NULL);
-        }
-
-        $stmt->bindParam(':created_by', $created_by);
-
-        return $stmt->execute();
-    }
 
     /**
      * Получить мероприятия клуба

@@ -203,6 +203,7 @@ class ApiRouter {
             // EVENT ROUTES
             // ================================
             case $cleanPath === '/api/events' && $method === 'POST':
+                // Создание нового события
                 $payload = AuthMiddleware::authenticate();
                 $this->eventController->create();
                 break;

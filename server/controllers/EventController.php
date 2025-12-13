@@ -87,98 +87,148 @@ class EventController {
      * Создать новое мероприятие
      * POST /api/events
      */
-    public function create() {
+    public function create()
+    {
         try {
-            // 1. Проверяем авторизацию
+            // Аутентифицируем пользователя и получаем его данные
             $user = AuthMiddleware::authenticate();
 
-            // 2. Получаем данные напрямую (как в тестовом методе)
-            $raw = file_get_contents('php://input');
-            $data = json_decode($raw, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE || !$data) {
-                Response::error('Некорректный JSON', null, 400);
+            // Проверяем права доступа - только admin и club_owner могут создавать события
+            if (!in_array($user['role'], ['admin', 'club_owner'])) {
+                Response::error('Недостаточно прав для создания события', null, 403);
             }
 
-            // 3. Проверяем обязательные поля
-            $required = ['club_id', 'title', 'event_date'];
-            foreach ($required as $field) {
-                if (empty($data[$field])) {
-                    Response::error("Отсутствует обязательное поле: $field", null, 422);
+            // Получаем данные из тела запроса
+            $input = file_get_contents('php://input');
+            if (empty($input)) {
+                Response::error('Тело запроса пустое', null, 400);
+            }
+
+            $data = json_decode($input, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Response::error('Неверный JSON формат', null, 400);
+            }
+
+            // Валидация обязательных полей
+            $requiredFields = ['title', 'event_date', 'club_id'];
+            $missingFields = [];
+
+            foreach ($requiredFields as $field) {
+                if (!isset($data[$field]) || (is_string($data[$field]) && trim($data[$field]) === '')) {
+                    $missingFields[] = $field;
                 }
             }
 
-            // 4. Проверяем формат даты
-            $event_date = $data['event_date'];
-            if (!strtotime($event_date)) {
-                Response::error("Некорректный формат даты: $event_date", null, 422);
+            if (!empty($missingFields)) {
+                Response::error('Отсутствуют обязательные поля: ' . implode(', ', $missingFields), null, 400);
             }
 
-            // 5. Форматируем дату для MySQL
-            $formatted_date = date('Y-m-d H:i:s', strtotime($event_date));
+            // Проверяем, что пользователь имеет доступ к клубу (если не админ)
+            if ($user['role'] === 'club_owner') {
+                // Для club_owner проверяем, что он является капитаном или вице-капитаном клуба
+                $checkQuery = "SELECT * FROM clubs WHERE id = ? AND (captain_id = ? OR vice_captain_id = ?)";
+                $stmt = $this->db->prepare($checkQuery);
+                $stmt->execute([$data['club_id'], $user['id'], $user['id']]);
 
-            // 6. Получаем user_id (используем правильный ключ)
-            $userId = $user['user_id'] || $user['id'] || null;
-            if (!$userId) {
-                Response::error('Не удалось определить ID пользователя', null, 400);
+                if ($stmt->rowCount() === 0) {
+                    Response::error('Вы не можете создавать события для этого клуба', null, 403);
+                }
             }
 
-            // 7. Проверяем права через прямой SQL запрос (временно, пока не исправим ClubMiddleware)
-            $club_id = (int)$data['club_id'];
-            $query = "SELECT * FROM clubs 
-                  WHERE id = :club_id 
-                  AND (captain_id = :user_id OR vice_captain_id = :user_id)";
+            // Проверяем, что клуб существует и активен
+            $clubCheckQuery = "SELECT * FROM clubs WHERE id = ? AND status = 'Active'";
+            $stmt = $this->db->prepare($clubCheckQuery);
+            $stmt->execute([$data['club_id']]);
+
+            if ($stmt->rowCount() === 0) {
+                Response::error('Клуб не найден или неактивен', null, 404);
+            }
+
+            // Валидация даты
+            $eventDateTime = strtotime($data['event_date']);
+            if ($eventDateTime === false) {
+                Response::error('Неверный формат даты', null, 400);
+            }
+
+            // Проверяем, что дата в будущем (или можно разрешить прошедшие даты для тестирования)
+            // if ($eventDateTime < time()) {
+            //     Response::error('Дата события должна быть в будущем', null, 400);
+            // }
+
+            // Подготавливаем данные для вставки
+            $eventData = [
+                'club_id' => (int)$data['club_id'],
+                'title' => trim($data['title']),
+                'description' => isset($data['description']) ? trim($data['description']) : null,
+                'event_date' => date('Y-m-d H:i:s', $eventDateTime),
+                'location' => isset($data['location']) ? trim($data['location']) : null,
+                'max_participants' => isset($data['max_participants']) ? (int)$data['max_participants'] : null,
+                'external_fee_amount' => isset($data['external_fee_amount']) ? (float)$data['external_fee_amount'] : 0.00,
+                'external_fee_currency' => isset($data['external_fee_currency']) ? trim($data['external_fee_currency']) : 'USD',
+                'is_free_for_members' => isset($data['is_free_for_members']) ? (int)$data['is_free_for_members'] : 1,
+                'status' => 'scheduled',
+                'created_by' => $user['user_id'],
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+
+            // Начинаем транзакцию
+            $this->db->beginTransaction();
+
+            // SQL запрос для создания события
+            $query = "INSERT INTO events 
+                  (club_id, title, description, event_date, location, max_participants, 
+                   external_fee_amount, external_fee_currency, is_free_for_members, 
+                   status, created_by, created_at, updated_at)
+                  VALUES 
+                  (:club_id, :title, :description, :event_date, :location, :max_participants,
+                   :external_fee_amount, :external_fee_currency, :is_free_for_members,
+                   :status, :created_by, :created_at, :updated_at)";
 
             $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':club_id', $club_id, PDO::PARAM_INT);
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
-            $stmt->execute();
+            $stmt->execute($eventData);
 
-            $isCaptainOrVice = $stmt->rowCount() > 0;
-            $isAdmin = ($user['role'] || '') == 'admin';
+            // Получаем ID созданного события
+            $eventId = $this->db->lastInsertId();
 
-            if (!$isCaptainOrVice && !$isAdmin) {
-                Response::forbidden('Только капитан, заместитель клуба или администратор может создавать мероприятия');
+            // Получаем полные данные созданного события
+            $selectQuery = "SELECT 
+                e.id,
+                e.title AS event_name,
+                c.name AS club_name,
+                e.event_date AS event_datetime,
+                e.max_participants,
+                e.status AS event_status,
+                e.external_fee_amount AS ticket_price,
+                e.external_fee_currency AS currency,
+                e.description,
+                e.location,
+                e.is_free_for_members,
+                e.created_at,
+                e.created_by,
+                CONCAT(u.first_name, ' ', u.last_name) AS created_by_name
+            FROM events e
+            JOIN clubs c ON e.club_id = c.id
+            LEFT JOIN users u ON e.created_by = u.id
+            WHERE e.id = ?";
+
+            $stmt = $this->db->prepare($selectQuery);
+            $stmt->execute([$eventId]);
+            $createdEvent = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Фиксируем транзакцию
+            $this->db->commit();
+
+            Response::success('Событие успешно создано', $createdEvent, 201);
+        } catch (PDOException $e) {
+            // Откатываем транзакцию в случае ошибки
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
             }
 
-            // 8. Создаем мероприятие через прямой SQL запрос (временно, пока не исправим Event.php)
-            $query = "INSERT INTO events (club_id, title, description, event_date, location, status, max_participants, created_by) 
-                  VALUES (:club_id, :title, :description, :event_date, :location, :status, :max_participants, :created_by)";
-
-            $stmt = $this->db->prepare($query);
-
-            // Подготавливаем значения
-            $title = trim($data['title']);
-            $description = trim($data['description'] || '');
-            $location = trim($data['location'] || '');
-            $max_participants = !empty($data['max_participants']) ? (int)$data['max_participants'] : null;
-
-            // Привязываем параметры
-            $stmt->bindParam(':club_id', $club_id, PDO::PARAM_INT);
-            $stmt->bindParam(':title', $title);
-            $stmt->bindParam(':description', $description);
-            $stmt->bindParam(':event_date', $formatted_date);
-            $stmt->bindParam(':location', $location);
-            $stmt->bindValue(':status', 'scheduled');
-
-            if ($max_participants !== null) {
-                $stmt->bindParam(':max_participants', $max_participants, PDO::PARAM_INT);
-            } else {
-                $stmt->bindValue(':max_participants', null, PDO::PARAM_NULL);
-            }
-
-            $stmt->bindParam(':created_by', $userId, PDO::PARAM_INT);
-
-            if ($stmt->execute()) {
-                $lastId = $this->db->lastInsertId();
-                Response::success('Мероприятие успешно создано', ['id' => $lastId]);
-            } else {
-                $errorInfo = $stmt->errorInfo();
-                Response::error('Ошибка базы данных: ' . $errorInfo[2], null, 500);
-            }
-
+            Response::error('Ошибка при создании события: ' . $e->getMessage(), null, 500);
         } catch (Exception $e) {
-            Response::error('Ошибка: ' . $e->getMessage());
+            Response::error('Ошибка: ' . $e->getMessage(), null, 500);
         }
     }
 
