@@ -1,11 +1,14 @@
 <?php
 require_once __DIR__ . '/../utils/Response.php';
-class Event {
+
+class Event
+{
     private $db;
     private $table = 'events';
 
-    public function __construct($db) {
-        $this->conn = $db;
+    public function __construct($db)
+    {
+        $this->db = $db;
     }
 
     /**
@@ -14,7 +17,8 @@ class Event {
     /**
      * Создать мероприятие
      */
-    public function create($data) {
+    public function create($data)
+    {
         // Подготавливаем значения перед bindParam
         $club_id = $data['club_id'] || null;
         $title = $data['title'] || '';
@@ -59,7 +63,8 @@ class Event {
     /**
      * Получить мероприятия клуба
      */
-    public function getClubEvents($club_id) {
+    public function getClubEvents($club_id)
+    {
         $query = "SELECT e.*, 
                   COUNT(ep.id) as participants_count,
                   (SELECT COUNT(*) FROM event_participants WHERE event_id = e.id AND status = 'attended') as attended_count
@@ -79,7 +84,8 @@ class Event {
     /**
      * Получить мероприятие по ID
      */
-    public function getById($id) {
+    public function getById($id)
+    {
         $query = "SELECT e.*, c.name as club_name, 
                   u.first_name as creator_first_name, u.last_name as creator_last_name
                   FROM " . $this->table . " e
@@ -97,7 +103,8 @@ class Event {
     /**
      * Проверить, является ли пользователь участником мероприятия
      */
-    public function isUserParticipant($event_id, $user_id) {
+    public function isUserParticipant($event_id, $user_id)
+    {
         $query = "SELECT id FROM event_participants 
               WHERE event_id = :event_id AND user_id = :user_id";
         $stmt = $this->db->prepare($query);
@@ -111,7 +118,8 @@ class Event {
     /**
      * Получить мероприятия пользователя
      */
-    public function getUserEvents($user_id, $status = null) {
+    public function getUserEvents($user_id, $status = null)
+    {
         $query = "SELECT e.*, c.name as club_name, ep.status as participation_status
                   FROM events e
                   JOIN event_participants ep ON e.id = ep.event_id
@@ -138,7 +146,8 @@ class Event {
     /**
      * Обновить статус мероприятия
      */
-    public function updateStatus($id, $status) {
+    public function updateStatus($id, $status)
+    {
         $allowedStatuses = ['scheduled', 'ongoing', 'completed', 'cancelled'];
 
         if (!in_array($status, $allowedStatuses)) {
@@ -157,7 +166,8 @@ class Event {
     /**
      * Обновить мероприятие
      */
-    public function update($id, $data) {
+    public function update($id, $data)
+    {
         $fields = [];
         $params = [':id' => $id];
 
@@ -187,7 +197,8 @@ class Event {
     /**
      * Удалить мероприятие
      */
-    public function delete($id) {
+    public function delete($id)
+    {
         $query = "DELETE FROM events WHERE id = :id";
         $stmt = $this->db->prepare($query);
         $stmt->bindParam(':id', $id);
@@ -197,7 +208,8 @@ class Event {
 
     // В models/Event.php добавьте:
 
-    public function getEventsByUserId($userId) {
+    public function getEventsByUserId($userId)
+    {
         $query = "SELECT e.*, 
                          c.name as club_name,
                          c.id as club_id,
@@ -210,7 +222,7 @@ class Event {
                   WHERE ep.user_id = :user_id
                   ORDER BY e.event_date DESC";
 
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         $stmt->bindParam(':user_id', $userId);
         $stmt->execute();
 
@@ -218,7 +230,8 @@ class Event {
     }
 
     // Получить предстоящие мероприятия по ID пользователя
-    public function getUpcomingEventsByUserId($userId) {
+    public function getUpcomingEventsByUserId($userId)
+    {
         $query = "SELECT e.*, 
                          c.name as club_name,
                          c.id as club_id,
@@ -233,7 +246,7 @@ class Event {
                     AND ep.status != 'cancelled'
                   ORDER BY e.event_date ASC";
 
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         $stmt->bindParam(':user_id', $userId);
         $stmt->execute();
 
@@ -241,7 +254,8 @@ class Event {
     }
 
     // Получить прошедшие мероприятия по ID пользователя
-    public function getPastEventsByUserId($userId) {
+    public function getPastEventsByUserId($userId)
+    {
         $query = "SELECT e.*, 
                          c.name as club_name,
                          c.id as club_id,
@@ -262,4 +276,5 @@ class Event {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
+
 ?>

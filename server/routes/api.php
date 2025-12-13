@@ -108,6 +108,11 @@ class ApiRouter {
                 $this->clubController->getAll($payload);
                 break;
 
+            case $cleanPath === '/api/reports/clubs-summary' && $method === 'GET':
+                $payload = AuthMiddleware::authenticate(); // Только проверка авторизации
+                $this->clubController->getClubsSummaryReport($payload);
+                break;
+
             case preg_match('#^/api/clubs/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
                 $this->clubController->getById($matches[1], $payload);

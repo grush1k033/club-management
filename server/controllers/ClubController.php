@@ -449,4 +449,76 @@ class ClubController {
 
         return Response::success(null, "Successfully left the club");
     }
+
+    // Получить сводный отчет по клубам
+// Получить сводный отчет по клубам
+    public function getClubsSummaryReport($payload = null) {
+        try {
+            $isAdmin = ($payload && $payload['role'] === 'admin');
+
+            $query = "
+            SELECT 
+                c.id AS club_id,
+                c.name AS club_name,
+                c.category AS category,
+                c.status AS club_status,
+                COUNT(DISTINCT u.id) AS members_count,
+                COUNT(DISTINCT e.id) AS events_count,
+                CONCAT(captain.first_name, ' ', captain.last_name) AS captain_name,
+                captain.email AS captain_email,
+                captain.phone AS captain_phone,
+                CONCAT(vice_captain.first_name, ' ', vice_captain.last_name) AS vice_captain_name,
+                c.created_at,
+                c.updated_at
+            FROM clubs c
+            LEFT JOIN users u ON u.club_id = c.id
+            LEFT JOIN events e ON e.club_id = c.id
+            LEFT JOIN users captain ON captain.id = c.captain_id
+            LEFT JOIN users vice_captain ON vice_captain.id = c.vice_captain_id
+            WHERE 1=1
+        ";
+
+            // Если не админ, показываем только активные клубы
+            if (!$isAdmin) {
+                $query .= " AND c.status = 'Active'";
+            }
+
+            $query .= "
+            GROUP BY c.id, c.name, c.category, c.status, captain.first_name, captain.last_name, 
+                     captain.email, captain.phone, vice_captain.first_name, vice_captain.last_name
+            ORDER BY c.name ASC
+        ";
+
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Форматируем результат
+            $formattedResult = [];
+            foreach ($result as $row) {
+                $formattedResult[] = [
+                    'club_id' => $row['club_id'],
+                    'club_name' => $row['club_name'],
+                    'category' => $row['category'],
+                    'status' => $row['club_status'],
+                    'members' => (int)$row['members_count'],
+                    'events' => (int)$row['events_count'],
+                    'captain' => $row['captain_name'],
+                    'captain_email' => $row['captain_email'],
+                    'captain_phone' => $row['captain_phone'],
+                    'vice_captain' => $row['vice_captain_name'],
+                    'created_at' => $row['created_at'],
+                    'updated_at' => $row['updated_at']
+                ];
+            }
+
+            Response::success('Отчет по клубам получен', [
+                'total_clubs' => count($formattedResult),
+                'clubs' => $formattedResult,
+                'view_all' => $isAdmin  // Информация о том, видит ли пользователь все клубы
+            ]);
+        } catch (Exception $e) {
+            Response::error('Ошибка при получении отчета: ' . $e->getMessage(), [], 500);
+        }
+    }
 }
