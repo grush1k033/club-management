@@ -161,7 +161,9 @@ class EventController {
     public function getEventsReport()
     {
         $query = "SELECT 
+            e.id AS event_id,
             e.title AS event_name,
+            c.id AS club_id,
             c.name AS club_name,
             e.event_date AS event_datetime,
             e.max_participants,
@@ -172,7 +174,7 @@ class EventController {
           FROM events e
           JOIN clubs c ON e.club_id = c.id
           LEFT JOIN event_participants ep ON e.id = ep.event_id AND ep.status = 'registered'
-          GROUP BY e.id
+          GROUP BY e.id, e.title, c.id, c.name, e.event_date, e.max_participants, e.status, e.external_fee_amount, e.external_fee_currency
           ORDER BY e.event_date DESC";
 
         try {
@@ -180,9 +182,14 @@ class EventController {
             $stmt->execute();
             $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Форматируем дату
+            // Форматируем данные
             foreach ($events as &$event) {
                 $event['event_datetime'] = date('Y-m-d H:i:s', strtotime($event['event_datetime']));
+                $event['event_id'] = (int)$event['event_id'];
+                $event['club_id'] = (int)$event['club_id'];
+                $event['max_participants'] = $event['max_participants'] ? (int)$event['max_participants'] : null;
+                $event['ticket_price'] = (float)$event['ticket_price'];
+                $event['registered_count'] = (int)$event['registered_count'];
             }
 
             Response::success('Данные о событиях успешно получены', $events);
