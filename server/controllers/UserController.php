@@ -227,8 +227,8 @@ class UserController
                 COUNT(DISTINCT ep.event_id) AS events_registered_count,
                 u.role AS user_role,
                 CASE 
-                    WHEN u.is_active = TRUE THEN 'Активен'
-                    ELSE 'Неактивен'
+                    WHEN u.is_active = TRUE THEN 'Active'
+                    ELSE 'Inactive'
                 END AS user_status,
                 u.balance AS user_balance,
                 u.created_at AS user_created_at

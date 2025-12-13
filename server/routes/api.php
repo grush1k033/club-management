@@ -170,7 +170,7 @@ class ApiRouter {
 
             case preg_match('#^/api/clubs/(\d+)/leave$#', $cleanPath, $matches) && $method === 'POST':
                 $clubId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
+                AuthMiddleware::authenticate();
                 $this->clubController->leaveClub($clubId);
                 break;
 
@@ -190,6 +190,12 @@ class ApiRouter {
             case $cleanPath === '/api/events' && $method === 'POST':
                 $payload = AuthMiddleware::authenticate();
                 $this->eventController->create();
+                break;
+
+            case $cleanPath === '/api/events/report' && $method === 'GET':
+                // Доступно для всех авторизованных пользователей
+                $payload = AuthMiddleware::authenticate();
+                $this->eventController->getEventsReport();
                 break;
 
             case $cleanPath === '/api/events/test' && $method === 'POST':
