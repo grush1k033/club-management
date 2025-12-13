@@ -450,8 +450,6 @@ class ClubController {
         return Response::success(null, "Successfully left the club");
     }
 
-    // Получить сводный отчет по клубам
-// Получить сводный отчет по клубам
     public function getClubsSummaryReport($payload = null) {
         try {
             $isAdmin = ($payload && $payload['role'] === 'admin');
@@ -519,6 +517,51 @@ class ClubController {
             ]);
         } catch (Exception $e) {
             Response::error('Ошибка при получении отчета: ' . $e->getMessage(), [], 500);
+        }
+    }
+
+    // server/controllers/ClubController.php
+// Добавьте этот метод в класс ClubController
+
+    public function getPlatformStats($payload = null) {
+        try {
+            $query = "
+        SELECT 
+            COUNT(DISTINCT c.id) AS total_clubs,
+            COUNT(DISTINCT CASE WHEN c.status = 'Active' THEN c.id END) AS active_clubs,
+            COUNT(DISTINCT e.id) AS total_events,
+            COUNT(DISTINCT CASE WHEN YEARWEEK(e.event_date, 1) = YEARWEEK(CURDATE(), 1) THEN e.id END) AS events_this_week,
+            COUNT(DISTINCT u.id) AS total_members,
+            COUNT(DISTINCT CASE WHEN YEARWEEK(e.event_date, 1) = YEARWEEK(CURDATE() + INTERVAL 7 DAY, 1) THEN e.id END) AS events_next_week,
+            COUNT(DISTINCT CASE WHEN e.event_date > NOW() THEN e.id END) AS upcoming_events,
+            COUNT(DISTINCT CASE WHEN e.event_date < NOW() THEN e.id END) AS past_events
+        FROM clubs c
+        LEFT JOIN events e ON e.club_id = c.id
+        LEFT JOIN users u ON u.club_id = c.id
+        ";
+
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Преобразуем числовые значения
+            $stats = [
+                'total_clubs' => (int)$result['total_clubs'],
+                'active_clubs' => (int)$result['active_clubs'],
+                'inactive_clubs' => (int)$result['total_clubs'] - (int)$result['active_clubs'],
+                'total_events' => (int)$result['total_events'],
+                'events_this_week' => (int)$result['events_this_week'],
+                'events_next_week' => isset($result['events_next_week']) ? (int)$result['events_next_week'] : 0,
+                'upcoming_events' => isset($result['upcoming_events']) ? (int)$result['upcoming_events'] : 0,
+                'past_events' => isset($result['past_events']) ? (int)$result['past_events'] : 0,
+                'total_members' => (int)$result['total_members'],
+                'current_week' => date('W, Y'),
+                'timestamp' => time()
+            ];
+
+            Response::success('Статистика платформы получена', $stats);
+        } catch (Exception $e) {
+            Response::error('Ошибка при получении статистики: ' . $e->getMessage(), [], 500);
         }
     }
 }
