@@ -58,55 +58,29 @@ class ApiRouter {
             // ================================
             // USER ROUTES
             // ================================
-            case $cleanPath === '/api/users' && $method === 'GET':
-                AuthMiddleware::requireRole('admin');
-                $this->userController->getAllUsers();
-                break;
 
+            // GET
             case $cleanPath === '/api/reports/users-detailed' && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
                 $this->userController->getUsersDetailedReport($payload);
                 break;
 
+            // SEARCH
             case preg_match('#^/api/members/search(?:\?.*)?$#', $cleanPath) && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
-
                 $searchTerm = isset($_GET['query']) ? trim($_GET['query']) : '';
-
                 $this->userController->searchMembers($searchTerm, $payload);
                 break;
 
-
-            case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
+            // DELETE
+            case preg_match('#^/api/members/(\d+)$#', $cleanPath, $matches) && $method === 'DELETE':
                 $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['user_id'] != $userId && $payload['role'] !== 'admin') {
-                    Response::forbidden('Недостаточно прав');
-                }
-                $this->userController->getUser($userId);
+                $this->userController->deleteUser($userId);
                 break;
 
-            case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'PUT':
-                $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['user_id'] != $userId && $payload['role'] !== 'admin') {
-                    Response::forbidden('Недостаточно прав');
-                }
-                $this->userController->updateUser($userId);
-                break;
-
-            case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'PATCH':
-                $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['user_id'] != $userId && $payload['role'] !== 'admin') {
-                    Response::forbidden('Недостаточно прав');
-                }
-                $this->userController->patchUser($userId);
-                break;
-
-            case preg_match('#^/api/users/(\d+)$#', $cleanPath, $matches) && $method === 'DELETE':
-                AuthMiddleware::requireRole('admin');
-                $this->userController->deleteUser($matches[1]);
+            // MULTIPLE DELETE
+            case $cleanPath === '/api/members/multiple-delete' && $method === 'POST':
+                $this->userController->deleteMultipleUsers();
                 break;
 
             // ================================
@@ -189,123 +163,46 @@ class ApiRouter {
                 $this->clubController->leaveClub($clubId);
                 break;
 
-            case preg_match('#^/api/clubs/(\d+)/events$#', $cleanPath, $matches) && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getClubEvents($matches[1]);
-                break;
-
-            case preg_match('#^/api/clubs/(\d+)/events/upcoming$#', $cleanPath, $matches) && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getUpcomingClubEvents($matches[1]);
-                break;
-
             // ================================
             // EVENT ROUTES
             // ================================
+
+            // CREATE
             case $cleanPath === '/api/events' && $method === 'POST':
                 // Создание нового события
                 $payload = AuthMiddleware::authenticate();
                 $this->eventController->create();
                 break;
 
+            // GET
             case $cleanPath === '/api/events/report' && $method === 'GET':
                 // Доступно для всех авторизованных пользователей
                 $payload = AuthMiddleware::authenticate();
                 $this->eventController->getEventsReport();
                 break;
 
-            // Поиск ивентов
+            // SEARCH
             case preg_match('#^/api/events/search(?:\?.*)?$#', $cleanPath) && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
                 $searchTerm = isset($_GET['query']) ? trim($_GET['query']) : '';
                 $this->eventController->searchEvents($searchTerm, $payload);
-                break;
 
-            case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getEvent($matches[1]);
-                break;
-
-            case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'PUT':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->update($matches[1]);
-                break;
-
-            case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'DELETE':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->delete($matches[1]);
-                break;
-
+            // REGISTER
             case preg_match('#^/api/events/(\d+)/register$#', $cleanPath, $matches) && $method === 'POST':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->register($matches[1]);
-                break;
-
-            case preg_match('#^/api/events/(\d+)/cancel$#', $cleanPath, $matches) && $method === 'POST':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->cancelRegistration($matches[1]);
-                break;
-
-            case preg_match('#^/api/events/(\d+)/participants$#', $cleanPath, $matches) && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getEventParticipants($matches[1]);
-                break;
-
-            case preg_match('#^/api/events/(\d+)/participants/(\d+)$#', $cleanPath, $matches) && $method === 'PUT':
-                $payload = AuthMiddleware::authenticate();
+                // Регистрация на событие
                 $eventId = $matches[1];
-                $userId = $matches[2];
-                $this->eventController->updateParticipantStatus($eventId, $userId);
+                $this->eventController->registerForEvent($eventId);
                 break;
 
-            case preg_match('#^/api/events/(\d+)/toggle-status$#', $cleanPath, $matches) && $method === 'PUT':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->toggleEventStatus($matches[1]);
+            // DELETE
+            case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'DELETE':
+                $eventId = $matches[1];
+                $this->eventController->deleteEvent($eventId);
                 break;
 
-            // ================================
-            // USER EVENTS ROUTES
-            // ================================
-            case $cleanPath === '/api/user/events' && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getUserEvents();
-                break;
-
-            case $cleanPath === '/api/user/events/upcoming' && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getUpcomingEvents();
-                break;
-
-            case $cleanPath === '/api/user/events/past' && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->eventController->getPastEvents();
-                break;
-
-            case preg_match('#^/api/users/(\d+)/events$#', $cleanPath, $matches) && $method === 'GET':
-                $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['role'] !== 'admin') {
-                    Response::forbidden('Только администратор может просматривать мероприятия других пользователей');
-                }
-                $this->eventController->getUserEventsAdmin($userId);
-                break;
-
-            case preg_match('#^/api/users/(\d+)/events/upcoming$#', $cleanPath, $matches) && $method === 'GET':
-                $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['role'] !== 'admin') {
-                    Response::forbidden('Только администратор может просматривать мероприятия других пользователей');
-                }
-                $this->eventController->getUpcomingEventsAdmin($userId);
-                break;
-
-            case preg_match('#^/api/users/(\d+)/events/past$#', $cleanPath, $matches) && $method === 'GET':
-                $userId = $matches[1];
-                $payload = AuthMiddleware::authenticate();
-                if ($payload['role'] !== 'admin') {
-                    Response::forbidden('Только администратор может просматривать мероприятия других пользователей');
-                }
-                $this->eventController->getPastEventsAdmin($userId);
+            // DELETE-MULTIPLE
+            case $cleanPath === '/api/events/delete-multiple' && $method === 'POST':
+                $this->eventController->deleteMultipleEvents();
                 break;
 
             // ================================
