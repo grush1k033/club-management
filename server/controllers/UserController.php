@@ -15,7 +15,171 @@ class UserController
         $this->db = $db;
         $this->user = new User($db);
     }
+    public function createUser($payload = null) {
+        try {
+            // Проверяем авторизацию
+            if (!$payload || !isset($payload['user_id'])) {
+                Response::error('Неавторизованный доступ', [], 401);
+            }
 
+            // Проверяем права (админ или владелец клуба)
+            $currentUserId = $payload['user_id'];
+            $currentUserRole = $payload['role'];
+
+            // Если не админ и не владелец клуба
+            if ($currentUserRole !== 'admin' && $currentUserRole !== 'club_owner') {
+                Response::error('Недостаточно прав для создания пользователей', [], 403);
+            }
+
+            // Получаем данные из запроса
+            $input = json_decode(file_get_contents('php://input'), true);
+
+            // Валидация обязательных полей
+            $requiredFields = ['email', 'password', 'first_name', 'last_name'];
+            foreach ($requiredFields as $field) {
+                if (empty($input[$field])) {
+                    Response::error("Обязательное поле '$field' не заполнено", [], 400);
+                }
+            }
+
+            // Проверка email
+            if (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
+                Response::error('Некорректный email адрес', [], 400);
+            }
+
+            // Проверка уникальности email
+            $checkEmailQuery = "SELECT id FROM users WHERE email = :email";
+            $checkEmailStmt = $this->db->prepare($checkEmailQuery);
+            $checkEmailStmt->execute(['email' => $input['email']]);
+
+            if ($checkEmailStmt->fetch()) {
+                Response::error('Пользователь с таким email уже существует', [], 400);
+            }
+
+            // Если указан club_id, проверяем существование клуба
+            if (!empty($input['club_id'])) {
+                $checkClubQuery = "SELECT id FROM clubs WHERE id = :club_id AND status = 'Active'";
+                $checkClubStmt = $this->db->prepare($checkClubQuery);
+                $checkClubStmt->execute(['club_id' => $input['club_id']]);
+
+                if (!$checkClubStmt->fetch()) {
+                    Response::error('Указанный клуб не существует или неактивен', [], 400);
+                }
+
+                // Проверяем, может ли текущий пользователь добавлять участников в этот клуб
+                if ($currentUserRole === 'club_owner') {
+                    // Для владельца клуба проверяем, что он является капитаном или вице-капитаном этого клуба
+                    $checkClubAccessQuery = "
+                    SELECT id FROM clubs 
+                    WHERE id = :club_id 
+                    AND (captain_id = :user_id OR vice_captain_id = :user_id)
+                ";
+                    $checkClubAccessStmt = $this->db->prepare($checkClubAccessQuery);
+                    $checkClubAccessStmt->execute([
+                        'club_id' => $input['club_id'],
+                        'user_id' => $currentUserId
+                    ]);
+
+                    if (!$checkClubAccessStmt->fetch()) {
+                        Response::error('У вас нет прав добавлять участников в этот клуб', [], 403);
+                    }
+                }
+            }
+
+            // Определяем роль пользователя
+            $role = 'member'; // По умолчанию обычный участник
+
+            // Админ может устанавливать любую роль
+            if ($currentUserRole === 'admin' && !empty($input['role'])) {
+                $allowedRoles = ['admin', 'club_owner', 'member'];
+                if (in_array($input['role'], $allowedRoles)) {
+                    $role = $input['role'];
+                }
+            }
+            // Владелец клуба может создавать только участников
+            else if ($currentUserRole === 'club_owner') {
+                $role = 'member';
+            }
+
+            // Хэшируем пароль
+            $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+
+            // Подготавливаем данные для вставки
+            $userData = [
+                'email' => $input['email'],
+                'password' => $hashedPassword,
+                'first_name' => $input['first_name'],
+                'last_name' => $input['last_name'],
+                'phone' => $input['phone'] || null,
+                'role' => $role,
+                'is_active' => isset($input['is_active']) ? (bool)$input['is_active'] : true,
+                'balance' => $input['balance'] || 0.00,
+                'currency' => $input['currency'] || 'USD',
+                'club_id' => $input['club_id'] || null,
+            ];
+
+            // Создаем SQL запрос
+            $fields = [];
+            $placeholders = [];
+            $values = [];
+
+            foreach ($userData as $field => $value) {
+                $fields[] = $field;
+                $placeholders[] = ":$field";
+                $values[":$field"] = $value;
+            }
+
+            $query = "INSERT INTO users (" . implode(', ', $fields) . ") 
+                  VALUES (" . implode(', ', $placeholders) . ")";
+
+            $stmt = $this->db->prepare($query);
+            $stmt->execute($values);
+
+            $newUserId = $this->db->lastInsertId();
+
+            // Получаем созданного пользователя
+            $getUserQuery = "
+            SELECT 
+                u.*,
+                c.name as club_name
+            FROM users u
+            LEFT JOIN clubs c ON u.club_id = c.id
+            WHERE u.id = :id
+        ";
+
+            $getUserStmt = $this->db->prepare($getUserQuery);
+            $getUserStmt->execute(['id' => $newUserId]);
+            $newUser = $getUserStmt->fetch(PDO::FETCH_ASSOC);
+
+            // Скрываем пароль в ответе
+            unset($newUser['password']);
+
+            // Форматируем ответ
+            $formattedUser = [
+                'id' => (int)$newUser['id'],
+                'email' => $newUser['email'],
+                'first_name' => $newUser['first_name'],
+                'last_name' => $newUser['last_name'],
+                'full_name' => $newUser['first_name'] . ' ' . $newUser['last_name'],
+                'phone' => $newUser['phone'],
+                'role' => $newUser['role'],
+                'is_active' => (bool)$newUser['is_active'],
+                'balance' => (float)$newUser['balance'],
+                'currency' => $newUser['currency'],
+                'club_id' => $newUser['club_id'] ? (int)$newUser['club_id'] : null,
+                'club_name' => $newUser['club_name'],
+                'created_at' => $newUser['created_at'],
+                'updated_at' => $newUser['updated_at']
+            ];
+
+            Response::success('Пользователь успешно создан', [
+                'user' => $formattedUser
+            ], 201);
+
+        } catch (Exception $e) {
+            Response::error('Ошибка при создании пользователя: ' . $e->getMessage(), [], 500);
+        }
+    }
     public function getUsersDetailedReport($payload = null) {
         try {
             $isAdmin = ($payload && $payload['role'] === 'admin');
@@ -83,54 +247,212 @@ class UserController
             Response::error('Ошибка при получении отчета по пользователям: ' . $e->getMessage(), [], 500);
         }
     }
-
-    public function searchMembers($searchTerm, $payload) {
+    public function updateUser($userId, $payload = null) {
         try {
-            $query = "
-        SELECT 
-            CONCAT(u.first_name, ' ', u.last_name) AS user_full_name,
-            u.email AS user_email,
-            u.phone AS user_phone,
-            COALESCE(c.name, 'Не состоит в клубе') AS club_name,
-            COUNT(DISTINCT ep.event_id) AS events_registered_count,
-            u.role AS user_role,
-            CASE 
-                WHEN u.is_active = TRUE THEN 'Active'
-                ELSE 'Inactive'
-            END AS user_status,
-            u.balance AS user_balance,
-            u.created_at AS user_created_at
-        FROM users u
-        LEFT JOIN clubs c ON u.club_id = c.id
-        LEFT JOIN event_participants ep ON u.id = ep.user_id AND ep.status IN ('registered', 'attended')
-        WHERE (:search_term IS NULL OR 
-               CONCAT(u.first_name, ' ', u.last_name) LIKE CONCAT('%', :search_term, '%') OR
-               u.first_name LIKE CONCAT('%', :search_term, '%') OR
-               u.last_name LIKE CONCAT('%', :search_term, '%') OR
-               u.email LIKE CONCAT('%', :search_term, '%'))
-        GROUP BY u.id, u.first_name, u.last_name, u.email, u.phone, c.name, u.role, u.is_active, u.balance, u.created_at
-        ORDER BY u.created_at DESC, u.last_name, u.first_name
-        LIMIT 20
+            // Проверяем авторизацию
+            if (!$payload || !isset($payload['user_id'])) {
+                Response::error('Неавторизованный доступ', [], 401);
+            }
+
+            $currentUserId = $payload['user_id'];
+            $currentUserRole = $payload['role'];
+
+            // Получаем данные из запроса
+            $input = json_decode(file_get_contents('php://input'), true);
+
+            if (empty($input)) {
+                Response::error('Нет данных для обновления', [], 400);
+            }
+
+            // Получаем информацию о пользователе, которого обновляем
+            $getUserQuery = "
+            SELECT u.*, c.captain_id, c.vice_captain_id 
+            FROM users u
+            LEFT JOIN clubs c ON u.club_id = c.id
+            WHERE u.id = :user_id
         ";
 
+            $getUserStmt = $this->db->prepare($getUserQuery);
+            $getUserStmt->execute(['user_id' => $userId]);
+            $userToUpdate = $getUserStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$userToUpdate) {
+                Response::error('Пользователь не найден', [], 404);
+            }
+
+            // Проверяем права доступа
+            $canUpdate = false;
+
+            // 1. Админ может обновлять любого пользователя
+            if ($currentUserRole === 'admin') {
+                $canUpdate = true;
+            }
+            // 2. Пользователь может обновлять свои данные
+            else if ($currentUserId == $userId) {
+                $canUpdate = true;
+            }
+            // 3. Владелец клуба может обновлять участников своего клуба
+            else if ($currentUserRole === 'club_owner') {
+                // Проверяем, что текущий пользователь - капитан или вице-капитан клуба
+                if ($userToUpdate['club_id']) {
+                    $checkClubAccessQuery = "
+                    SELECT id FROM clubs 
+                    WHERE id = :club_id 
+                    AND (captain_id = :current_user_id OR vice_captain_id = :current_user_id)
+                ";
+                    $checkClubAccessStmt = $this->db->prepare($checkClubAccessQuery);
+                    $checkClubAccessStmt->execute([
+                        'club_id' => $userToUpdate['club_id'],
+                        'current_user_id' => $currentUserId
+                    ]);
+
+                    if ($checkClubAccessStmt->fetch()) {
+                        $canUpdate = true;
+                    }
+                }
+            }
+
+            if (!$canUpdate) {
+                Response::error('Недостаточно прав для обновления этого пользователя', [], 403);
+            }
+
+            // Проверяем, какие поля можно обновлять в зависимости от роли
+            $allowedFields = [];
+
+            // Общие поля, которые может обновлять пользователь для себя
+            $selfUpdateFields = ['first_name', 'last_name', 'phone'];
+
+            // Поля, которые может обновлять владелец клуба
+            $clubOwnerFields = ['first_name', 'last_name', 'phone', 'is_active', 'club_id'];
+
+            // Поля, которые может обновлять только админ
+            $adminFields = ['email', 'role', 'balance', 'currency', 'is_active', 'club_id', 'first_name', 'last_name', 'phone'];
+
+            // Определяем доступные поля в зависимости от роли
+            if ($currentUserRole === 'admin') {
+                $allowedFields = $adminFields;
+            } else if ($currentUserRole === 'club_owner' && $currentUserId != $userId) {
+                $allowedFields = $clubOwnerFields;
+            } else if ($currentUserId == $userId) {
+                $allowedFields = $selfUpdateFields;
+            }
+
+            // Фильтруем входные данные, оставляя только разрешенные поля
+            $updateData = [];
+            foreach ($input as $field => $value) {
+                if (in_array($field, $allowedFields)) {
+                    $updateData[$field] = $value;
+                }
+            }
+
+            // Проверка уникальности email (если обновляется)
+            if (isset($updateData['email'])) {
+                if (!filter_var($updateData['email'], FILTER_VALIDATE_EMAIL)) {
+                    Response::error('Некорректный email адрес', [], 400);
+                }
+
+                // Проверяем, не занят ли email другим пользователем
+                $checkEmailQuery = "SELECT id FROM users WHERE email = :email AND id != :user_id";
+                $checkEmailStmt = $this->db->prepare($checkEmailQuery);
+                $checkEmailStmt->execute([
+                    'email' => $updateData['email'],
+                    'user_id' => $userId
+                ]);
+
+                if ($checkEmailStmt->fetch()) {
+                    Response::error('Пользователь с таким email уже существует', [], 400);
+                }
+            }
+
+            // Проверка club_id (если обновляется)
+            if (isset($updateData['club_id'])) {
+                if ($updateData['club_id'] !== null) {
+                    $checkClubQuery = "SELECT id FROM clubs WHERE id = :club_id AND status = 'Active'";
+                    $checkClubStmt = $this->db->prepare($checkClubQuery);
+                    $checkClubStmt->execute(['club_id' => $updateData['club_id']]);
+
+                    if (!$checkClubStmt->fetch()) {
+                        Response::error('Указанный клуб не существует или неактивен', [], 400);
+                    }
+                }
+            }
+
+            // Обновление пароля (особый случай)
+            if (isset($input['password']) && !empty($input['password'])) {
+                // Только админ или сам пользователь может менять пароль
+                if ($currentUserRole === 'admin' || $currentUserId == $userId) {
+                    $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+                    $updateData['password'] = $hashedPassword;
+                }
+            }
+
+            // Если нечего обновлять
+            if (empty($updateData)) {
+                Response::success('Нет данных для обновления', [
+                    'user' => $this->getFormattedUser($userId)
+                ]);
+            }
+
+            // Строим SQL запрос
+            $setParts = [];
+            $values = [':user_id' => $userId];
+
+            foreach ($updateData as $field => $value) {
+                $setParts[] = "$field = :$field";
+                $values[":$field"] = $value;
+            }
+
+            $setParts[] = "updated_at = CURRENT_TIMESTAMP";
+
+            $query = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = :user_id";
+
             $stmt = $this->db->prepare($query);
-            $searchParam = empty($searchTerm) ? null : '%' . $searchTerm . '%';
-            $stmt->bindParam(':search_term', $searchParam);
-            $stmt->execute();
+            $stmt->execute($values);
 
-            $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Получаем обновленного пользователя
+            $getUpdatedUserQuery = "
+            SELECT 
+                u.*,
+                c.name as club_name
+            FROM users u
+            LEFT JOIN clubs c ON u.club_id = c.id
+            WHERE u.id = :id
+        ";
 
-            Response::success('Результаты поиска участников', [
-                'search_term' => $searchTerm,
-                'users' => $users,
-                'total' => count($users)
+            $getUpdatedUserStmt = $this->db->prepare($getUpdatedUserQuery);
+            $getUpdatedUserStmt->execute(['id' => $userId]);
+            $updatedUser = $getUpdatedUserStmt->fetch(PDO::FETCH_ASSOC);
+
+            // Скрываем пароль в ответе
+            unset($updatedUser['password']);
+
+            // Форматируем ответ
+            $formattedUser = [
+                'id' => (int)$updatedUser['id'],
+                'email' => $updatedUser['email'],
+                'first_name' => $updatedUser['first_name'],
+                'last_name' => $updatedUser['last_name'],
+                'full_name' => $updatedUser['first_name'] . ' ' . $updatedUser['last_name'],
+                'phone' => $updatedUser['phone'],
+                'role' => $updatedUser['role'],
+                'is_active' => (bool)$updatedUser['is_active'],
+                'balance' => (float)$updatedUser['balance'],
+                'currency' => $updatedUser['currency'],
+                'club_id' => $updatedUser['club_id'] ? (int)$updatedUser['club_id'] : null,
+                'club_name' => $updatedUser['club_name'],
+                'created_at' => $updatedUser['created_at'],
+                'updated_at' => $updatedUser['updated_at']
+            ];
+
+            Response::success('Пользователь успешно обновлен', [
+                'user' => $formattedUser,
+                'updated_fields' => array_keys($updateData)
             ]);
 
         } catch (Exception $e) {
-            Response::error('Ошибка при поиске участников: ' . $e->getMessage(), [], 500);
+            Response::error('Ошибка при обновлении пользователя: ' . $e->getMessage(), [], 500);
         }
     }
-
     public function deleteUser($userId)
     {
         try {
@@ -181,7 +503,6 @@ class UserController
             Response::error('Ошибка: ' . $e->getMessage(), null, 500);
         }
     }
-
     public function deleteMultipleUsers()
     {
         try {
@@ -299,4 +620,51 @@ class UserController
             Response::error('Ошибка: ' . $e->getMessage(), null, 500);
         }
     }
+    public function searchMembers($searchTerm, $payload) {
+        try {
+            $query = "
+        SELECT 
+            CONCAT(u.first_name, ' ', u.last_name) AS user_full_name,
+            u.email AS user_email,
+            u.phone AS user_phone,
+            COALESCE(c.name, 'Не состоит в клубе') AS club_name,
+            COUNT(DISTINCT ep.event_id) AS events_registered_count,
+            u.role AS user_role,
+            CASE 
+                WHEN u.is_active = TRUE THEN 'Active'
+                ELSE 'Inactive'
+            END AS user_status,
+            u.balance AS user_balance,
+            u.created_at AS user_created_at
+        FROM users u
+        LEFT JOIN clubs c ON u.club_id = c.id
+        LEFT JOIN event_participants ep ON u.id = ep.user_id AND ep.status IN ('registered', 'attended')
+        WHERE (:search_term IS NULL OR 
+               CONCAT(u.first_name, ' ', u.last_name) LIKE CONCAT('%', :search_term, '%') OR
+               u.first_name LIKE CONCAT('%', :search_term, '%') OR
+               u.last_name LIKE CONCAT('%', :search_term, '%') OR
+               u.email LIKE CONCAT('%', :search_term, '%'))
+        GROUP BY u.id, u.first_name, u.last_name, u.email, u.phone, c.name, u.role, u.is_active, u.balance, u.created_at
+        ORDER BY u.created_at DESC, u.last_name, u.first_name
+        LIMIT 20
+        ";
+
+            $stmt = $this->db->prepare($query);
+            $searchParam = empty($searchTerm) ? null : '%' . $searchTerm . '%';
+            $stmt->bindParam(':search_term', $searchParam);
+            $stmt->execute();
+
+            $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success('Результаты поиска участников', [
+                'search_term' => $searchTerm,
+                'users' => $users,
+                'total' => count($users)
+            ]);
+
+        } catch (Exception $e) {
+            Response::error('Ошибка при поиске участников: ' . $e->getMessage(), [], 500);
+        }
+    }
+
 }

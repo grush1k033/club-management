@@ -78,6 +78,19 @@ class ApiRouter {
                 $this->userController->deleteUser($userId);
                 break;
 
+            // CREATE USER
+            case $cleanPath === '/api/members' && $method === 'POST':
+                $payload = AuthMiddleware::authenticate();
+                $this->userController->createUser($payload);
+                break;
+
+            // UPDATE USER
+            case preg_match('#^/api/members/(\d+)$#', $cleanPath, $matches) && $method === 'PATCH':
+                $userId = $matches[1];
+                $payload = AuthMiddleware::authenticate();
+                $this->userController->updateUser($userId, $payload);
+                break;
+
             // MULTIPLE DELETE
             case $cleanPath === '/api/members/multiple-delete' && $method === 'POST':
                 $this->userController->deleteMultipleUsers();
@@ -193,6 +206,12 @@ class ApiRouter {
                 $eventId = $matches[1];
                 $this->eventController->registerForEvent($eventId);
                 break;
+            case preg_match('#^/api/events/(\d+)/cancel-registration$#', $cleanPath, $matches) && $method === 'POST':
+                // Отмена регистрации на событие
+                $eventId = $matches[1];
+                $this->eventController->cancelEventRegistration($eventId);
+                break;
+
 
             // DELETE
             case preg_match('#^/api/events/(\d+)$#', $cleanPath, $matches) && $method === 'DELETE':

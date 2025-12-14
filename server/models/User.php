@@ -234,88 +234,15 @@ class User {
         return $stmt->execute();
     }
 
-    // Отвязать пользователя от клуба
-    public function removeFromClub($userId) {
-        $query = "UPDATE " . $this->table . " 
-                 SET club_id = NULL,
-                     updated_at = CURRENT_TIMESTAMP
-                 WHERE id = :id";
 
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(":id", $userId);
 
-        return $stmt->execute();
-    }
 
-    // Получить всех пользователей определенного клуба
-    public function getUsersByClub($clubId, $page = 1, $limit = 10) {
-        $offset = ($page - 1) * $limit;
 
-        $query = "SELECT id, email, first_name, last_name, phone, role, 
-                         balance, is_active, created_at 
-                  FROM " . $this->table . " 
-                  WHERE club_id = :club_id
-                  ORDER BY created_at DESC 
-                  LIMIT :limit OFFSET :offset";
 
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(":club_id", $clubId);
-        $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
-        $stmt->execute();
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
 
-    // Получить количество пользователей в клубе
-    public function getClubUsersCount($clubId) {
-        $query = "SELECT COUNT(*) as total FROM " . $this->table . " WHERE club_id = ?";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $clubId);
-        $stmt->execute();
 
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result['total'];
-    }
 
-    // Проверить, достаточно ли средств на балансе
-    public function hasSufficientBalance($userId, $amount) {
-        $query = "SELECT balance FROM " . $this->table . " WHERE id = ?";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $userId);
-        $stmt->execute();
 
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result && $result['balance'] >= $amount;
-    }
-
-    // Получить капитана клуба
-    public function getClubCaptain($clubId) {
-        $query = "SELECT u.id, u.email, u.first_name, u.last_name, u.phone
-                  FROM " . $this->table . " u
-                  INNER JOIN clubs c ON u.id = c.captain_id
-                  WHERE c.id = ?";
-
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $clubId);
-        $stmt->execute();
-
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    // Проверить, является ли пользователь капитаном своего клуба
-    public function isClubCaptain($userId) {
-        $query = "SELECT COUNT(*) as is_captain
-                  FROM users u
-                  INNER JOIN clubs c ON u.club_id = c.id
-                  WHERE u.id = ? AND c.captain_id = u.id";
-
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $userId);
-        $stmt->execute();
-
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result && $result['is_captain'] > 0;
-    }
 }
 ?>
