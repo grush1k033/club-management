@@ -17,7 +17,6 @@ class User {
     public $created_at;
     public $updated_at;
 
-    // Новые свойства для баланса и клуба
     public $balance;
     public $currency;
     public $club_id;

@@ -28,7 +28,7 @@ if ($environment === 'local') {
     define('DB_PASS', 'VkvJ33ubp1yk');
 
     define('APP_ENV', 'production');
-    define('APP_URL', 'https://unitypay.wuaze.com');
+    define('APP_URL', 'http://192.168.100.6:4200');
 
 
 } else {
