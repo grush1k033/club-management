@@ -166,6 +166,7 @@ class EventController {
             e.title AS event_name,
             c.id AS club_id,
             c.name AS club_name,
+            e.created_by AS created_by,
             e.event_date AS event_datetime,
             e.max_participants,
             e.status AS event_status,
@@ -195,6 +196,7 @@ class EventController {
             e.title,
             c.id,
             c.name,
+            e.created_by,
             e.event_date,
             e.max_participants,
             e.status,
@@ -212,6 +214,9 @@ class EventController {
             foreach ($events as &$event) {
                 $event['event_id'] = (int)$event['event_id'];
                 $event['club_id'] = (int)$event['club_id'];
+                $event['created_by'] = $event['created_by'] !== null
+                    ? (int)$event['created_by']
+                    : null;
                 $event['event_datetime'] = date('Y-m-d H:i:s', strtotime($event['event_datetime']));
                 $event['max_participants'] = $event['max_participants'] !== null
                     ? (int)$event['max_participants']
@@ -219,7 +224,7 @@ class EventController {
                 $event['ticket_price'] = (float)$event['ticket_price'];
                 $event['registered_count'] = (int)$event['registered_count'];
 
-                // participants: JSON → PHP array of ints
+                // participants → массив int
                 $event['participants'] = $event['participants']
                     ? array_map('intval', json_decode($event['participants'], true))
                     : [];
@@ -235,6 +240,7 @@ class EventController {
             );
         }
     }
+
 
     public function searchEvents($searchTerm, $payload) {
         try {
