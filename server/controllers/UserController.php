@@ -266,11 +266,11 @@ class UserController
 
             // Получаем информацию о пользователе, которого обновляем
             $getUserQuery = "
-            SELECT u.*, c.captain_id, c.vice_captain_id 
-            FROM users u
-            LEFT JOIN clubs c ON u.club_id = c.id
-            WHERE u.id = :user_id
-        ";
+        SELECT u.*, c.captain_id, c.vice_captain_id 
+        FROM users u
+        LEFT JOIN clubs c ON u.club_id = c.id
+        WHERE u.id = :user_id
+    ";
 
             $getUserStmt = $this->db->prepare($getUserQuery);
             $getUserStmt->execute(['user_id' => $userId]);
@@ -296,10 +296,10 @@ class UserController
                 // Проверяем, что текущий пользователь - капитан или вице-капитан клуба
                 if ($userToUpdate['club_id']) {
                     $checkClubAccessQuery = "
-                    SELECT id FROM clubs 
-                    WHERE id = :club_id 
-                    AND (captain_id = :current_user_id OR vice_captain_id = :current_user_id)
-                ";
+                SELECT id FROM clubs 
+                WHERE id = :club_id 
+                AND (captain_id = :current_user_id OR vice_captain_id = :current_user_id)
+            ";
                     $checkClubAccessStmt = $this->db->prepare($checkClubAccessQuery);
                     $checkClubAccessStmt->execute([
                         'club_id' => $userToUpdate['club_id'],
@@ -316,55 +316,83 @@ class UserController
                 Response::error('Недостаточно прав для обновления этого пользователя', [], 403);
             }
 
-            // Проверяем, какие поля можно обновлять в зависимости от роли
-            $allowedFields = [];
+            // Определяем доступные поля в зависимости от того, кто обновляет
 
-            // Общие поля, которые может обновлять пользователь для себя
-            $selfUpdateFields = ['first_name', 'last_name', 'phone'];
+            // Поля, которые может обновлять сам пользователь для себя
+            // ВСЕ поля кроме balance, role (исключение - только admin может менять role)
+            $selfUpdateFields = ['email', 'first_name', 'last_name', 'phone', 'password'];
 
-            // Поля, которые может обновлять владелец клуба
-            $clubOwnerFields = ['first_name', 'last_name', 'phone', 'is_active', 'club_id'];
+            // Поля, которые может обновлять владелец клуба для участников своего клуба
+            $clubOwnerFields = ['first_name', 'last_name', 'phone', 'is_active'];
 
-            // Поля, которые может обновлять только админ
+            // Поля, которые может обновлять только админ для всех
             $adminFields = ['email', 'role', 'balance', 'currency', 'is_active', 'club_id', 'first_name', 'last_name', 'phone'];
 
-            // Определяем доступные поля в зависимости от роли
+            // Определяем доступные поля
+            $allowedFields = [];
+
             if ($currentUserRole === 'admin') {
+                // Админ может обновлять все поля
                 $allowedFields = $adminFields;
             } else if ($currentUserRole === 'club_owner' && $currentUserId != $userId) {
+                // Капитан клуба обновляет участников своего клуба
                 $allowedFields = $clubOwnerFields;
             } else if ($currentUserId == $userId) {
+                // Пользователь обновляет себя самого - может все кроме balance
                 $allowedFields = $selfUpdateFields;
+
+                // Сам пользователь НЕ может менять себе:
+                // 1. role (только админ)
+                // 2. balance (только админ)
+                // 3. club_id (это делается через вступление/выход из клуба)
+                // 4. is_active (только админ или капитан клуба)
+                // 5. currency (только админ)
+
+                // Удаляем недопустимые поля, если они пришли в запросе
+                $invalidSelfFields = ['role', 'balance', 'club_id', 'is_active', 'currency'];
+                foreach ($invalidSelfFields as $field) {
+                    if (isset($input[$field])) {
+                        unset($input[$field]); // Игнорируем эти поля при самообновлении
+                    }
+                }
             }
 
             // Фильтруем входные данные, оставляя только разрешенные поля
             $updateData = [];
             foreach ($input as $field => $value) {
                 if (in_array($field, $allowedFields)) {
+                    // Особые проверки для некоторых полей
+                    if ($field === 'email') {
+                        if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                            Response::error('Некорректный email адрес', [], 400);
+                        }
+
+                        // Проверяем уникальность email
+                        $checkEmailQuery = "SELECT id FROM users WHERE email = :email AND id != :user_id";
+                        $checkEmailStmt = $this->db->prepare($checkEmailQuery);
+                        $checkEmailStmt->execute([
+                            'email' => $value,
+                            'user_id' => $userId
+                        ]);
+
+                        if ($checkEmailStmt->fetch()) {
+                            Response::error('Пользователь с таким email уже существует', [], 400);
+                        }
+                    }
+
                     $updateData[$field] = $value;
                 }
             }
 
-            // Проверка уникальности email (если обновляется)
-            if (isset($updateData['email'])) {
-                if (!filter_var($updateData['email'], FILTER_VALIDATE_EMAIL)) {
-                    Response::error('Некорректный email адрес', [], 400);
-                }
-
-                // Проверяем, не занят ли email другим пользователем
-                $checkEmailQuery = "SELECT id FROM users WHERE email = :email AND id != :user_id";
-                $checkEmailStmt = $this->db->prepare($checkEmailQuery);
-                $checkEmailStmt->execute([
-                    'email' => $updateData['email'],
-                    'user_id' => $userId
-                ]);
-
-                if ($checkEmailStmt->fetch()) {
-                    Response::error('Пользователь с таким email уже существует', [], 400);
+            // Обработка пароля отдельно
+            if (isset($input['password']) && !empty($input['password'])) {
+                if (in_array('password', $allowedFields)) {
+                    $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+                    $updateData['password'] = $hashedPassword;
                 }
             }
 
-            // Проверка club_id (если обновляется)
+            // Проверка club_id (если обновляется админом)
             if (isset($updateData['club_id'])) {
                 if ($updateData['club_id'] !== null) {
                     $checkClubQuery = "SELECT id FROM clubs WHERE id = :club_id AND status = 'Active'";
@@ -374,15 +402,6 @@ class UserController
                     if (!$checkClubStmt->fetch()) {
                         Response::error('Указанный клуб не существует или неактивен', [], 400);
                     }
-                }
-            }
-
-            // Обновление пароля (особый случай)
-            if (isset($input['password']) && !empty($input['password'])) {
-                // Только админ или сам пользователь может менять пароль
-                if ($currentUserRole === 'admin' || $currentUserId == $userId) {
-                    $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
-                    $updateData['password'] = $hashedPassword;
                 }
             }
 
@@ -411,13 +430,13 @@ class UserController
 
             // Получаем обновленного пользователя
             $getUpdatedUserQuery = "
-            SELECT 
-                u.*,
-                c.name as club_name
-            FROM users u
-            LEFT JOIN clubs c ON u.club_id = c.id
-            WHERE u.id = :id
-        ";
+        SELECT 
+            u.*,
+            c.name as club_name
+        FROM users u
+        LEFT JOIN clubs c ON u.club_id = c.id
+        WHERE u.id = :id
+    ";
 
             $getUpdatedUserStmt = $this->db->prepare($getUpdatedUserQuery);
             $getUpdatedUserStmt->execute(['id' => $userId]);
