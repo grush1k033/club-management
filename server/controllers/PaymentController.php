@@ -13,20 +13,6 @@ class PaymentController {
         $this->paymentModel = new Payment($db);
     }
 
-    // Вспомогательный метод для проверки лидерства в клубе
-    private function checkClubLeadership($userId, $clubId) {
-        $query = "SELECT 1 FROM clubs 
-                  WHERE id = :club_id 
-                  AND (captain_id = :user_id OR vice_captain_id = :user_id)";
-
-        $stmt = $this->db->prepare($query);
-        $stmt->execute([
-            ':club_id' => $clubId,
-            ':user_id' => $userId
-        ]);
-
-        return $stmt->rowCount() > 0;
-    }
 
     // Создать новый платеж (без параметров)
     public function create() {
@@ -60,33 +46,65 @@ class PaymentController {
         return Response::error("Failed to create payment", 500);
     }
 
-    // Получить все платежи (без параметров)
-    public function getAll() {
-        // Только админ
-        AuthMiddleware::requireRole('admin');
+    public function getPayments()
+    {
+        $query = "
+        SELECT
+            p.id         AS payment_id,
+            u.id         AS user_id,
+            u.first_name AS user_first_name,
+            u.last_name  AS user_last_name,
+            c.id         AS club_id,
+            c.name       AS club_name,
+            p.payment_type,
+            e.id         AS event_id,
+            e.title      AS event_title,
+            p.amount,
+            p.currency,
+            p.status,
+            p.description,
+            p.created_at AS payment_date
+        FROM payments p
+        INNER JOIN users u
+            ON u.id = p.user_id
+        INNER JOIN clubs c
+            ON c.id = p.target_club_id
+        LEFT JOIN events e
+            ON e.id = p.event_id
+        ORDER BY p.created_at DESC
+    ";
 
-        // Используем filter_input для безопасного получения GET параметров
-        $filters = [
-            'user_id' => filter_input(INPUT_GET, 'user_id', FILTER_VALIDATE_INT) ?: null,
-            'club_id' => filter_input(INPUT_GET, 'club_id', FILTER_VALIDATE_INT) ?: null,
-            'event_id' => filter_input(INPUT_GET, 'event_id', FILTER_VALIDATE_INT) ?: null,
-            'payment_type' => filter_input(INPUT_GET, 'payment_type', FILTER_SANITIZE_STRING) ?: null,
-            'status' => filter_input(INPUT_GET, 'status', FILTER_SANITIZE_STRING) ?: null,
-            'payment_method' => filter_input(INPUT_GET, 'payment_method', FILTER_SANITIZE_STRING) ?: null
-        ];
+        try {
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Удаляем null значения
-        $filters = array_filter($filters, function($value) {
-            return $value !== null && $value !== '';
-        });
+            foreach ($payments as &$payment) {
+                $payment['payment_id'] = (int)$payment['payment_id'];
+                $payment['user_id'] = (int)$payment['user_id'];
+                $payment['club_id'] = (int)$payment['club_id'];
+                $payment['event_id'] = $payment['event_id'] !== null
+                    ? (int)$payment['event_id']
+                    : null;
 
-        $limit = filter_input(INPUT_GET, 'limit', FILTER_VALIDATE_INT) ?: 50;
-        $offset = filter_input(INPUT_GET, 'offset', FILTER_VALIDATE_INT) ?: 0;
+                $payment['amount'] = (float)$payment['amount'];
+                $payment['payment_date'] = date(
+                    'Y-m-d H:i:s',
+                    strtotime($payment['payment_date'])
+                );
+            }
 
-        $result = $this->paymentModel->getAll($filters, $limit, $offset);
+            Response::success('Платежи успешно получены', $payments);
 
-        return Response::success($result);
+        } catch (PDOException $e) {
+            Response::error(
+                'Ошибка при получении платежей: ' . $e->getMessage(),
+                null,
+                500
+            );
+        }
     }
+
 
     // Получить платежи текущего пользователя (без параметров)
     public function getMyPayments() {

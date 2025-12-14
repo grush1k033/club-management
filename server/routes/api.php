@@ -240,7 +240,7 @@ class ApiRouter {
 
             case $cleanPath === '/api/payments' && $method === 'GET':
                 AuthMiddleware::requireRole('admin');
-                $this->paymentController->getAll();
+                $this->paymentController->getPayments();
                 break;
 
             case $cleanPath === '/api/payments/my' && $method === 'GET':
