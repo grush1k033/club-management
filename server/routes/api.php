@@ -96,6 +96,11 @@ class ApiRouter {
                 $this->userController->deleteMultipleUsers();
                 break;
 
+            case $cleanPath === '/api/members/balance/me' && $method === 'GET':
+                $payload = AuthMiddleware::authenticate();
+                $this->paymentController->getUserBalance();
+                break;
+
             // ================================
             // CLUB ROUTES
             // ================================
@@ -115,7 +120,7 @@ class ApiRouter {
                 break;
 
             case $cleanPath === '/api/stats/platform' && $method === 'GET':
-                $payload = AuthMiddleware::authenticate(); // Проверка авторизации
+                $payload = AuthMiddleware::authenticate();
                 $this->clubController->getPlatformStats($payload);
                 break;
 
@@ -243,7 +248,7 @@ class ApiRouter {
                 $this->paymentController->getPayments();
                 break;
 
-            case $cleanPath === '/api/payments/my' && $method === 'GET':
+            case $cleanPath === '/api/payments/me' && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
                 $this->paymentController->getMyPayments();
                 break;
@@ -284,14 +289,10 @@ class ApiRouter {
             // ================================
             // BALANCE ROUTES
             // ================================
-            case $cleanPath === '/api/user/balance' && $method === 'GET':
-                $payload = AuthMiddleware::authenticate();
-                $this->paymentController->getUserBalance();
-                break;
 
-            case $cleanPath === '/api/user/balance/transactions' && $method === 'GET':
+            case $cleanPath === '/api/transactions' && $method === 'GET':
                 $payload = AuthMiddleware::authenticate();
-                $this->paymentController->getBalanceTransactions();
+                $this->paymentController->getAllTransactions();
                 break;
 
             // ================================

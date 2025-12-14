@@ -105,16 +105,68 @@ class PaymentController {
         }
     }
 
-
-    // Получить платежи текущего пользователя (без параметров)
     public function getMyPayments() {
         $payload = AuthMiddleware::authenticate();
-        $userId = $payload['user_id'];
+        $userId = (int)$payload['user_id'];
 
-        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
-        $payments = $this->paymentModel->getUserPayments($userId, $limit);
+        $query = "
+        SELECT
+            p.id                AS payment_id,
+            u.id                AS user_id,
+            u.first_name        AS user_first_name,
+            u.last_name         AS user_last_name,
+            c.id                AS club_id,
+            c.name              AS club_name,
+            p.payment_type,
+            e.id                AS event_id,
+            e.title             AS event_title,
+            p.amount,
+            p.currency,
+            p.status,
+            p.description,
+            p.payment_method,
+            p.transaction_id,
+            p.created_at        AS payment_date
+        FROM payments p
+        INNER JOIN users u
+            ON u.id = p.user_id
+        INNER JOIN clubs c
+            ON c.id = p.target_club_id
+        LEFT JOIN events e
+            ON e.id = p.event_id
+        WHERE p.user_id = :user_id
+        ORDER BY p.created_at DESC
+    ";
 
-        return Response::success($payments);
+        try {
+            $stmt = $this->db->prepare($query);
+            $stmt->execute([':user_id' => $userId]);
+            $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Преобразуем типы данных
+            foreach ($payments as &$payment) {
+                $payment['payment_id'] = (int)$payment['payment_id'];
+                $payment['user_id'] = (int)$payment['user_id'];
+                $payment['club_id'] = (int)$payment['club_id'];
+                $payment['event_id'] = $payment['event_id'] !== null
+                    ? (int)$payment['event_id']
+                    : null;
+                $payment['amount'] = (float)$payment['amount'];
+                $payment['payment_date'] = date(
+                    'Y-m-d H:i:s',
+                    strtotime($payment['payment_date'])
+                );
+            }
+
+            Response::success('Платежи пользователя успешно получены', $payments);
+
+        } catch (PDOException $e) {
+            Response::error(
+                'Ошибка при получении платежей пользователя: ' . $e->getMessage(),
+                null,
+                500
+            );
+        }
     }
 
     // Получить платеж по ID (с параметром)
@@ -225,25 +277,95 @@ class PaymentController {
 
         return Response::success($payments);
     }
+    // server/controllers/PaymentController.php (добавить в класс)
 
-    // Получить статистику платежей (без параметров)
-    public function getStats() {
-        $payload = AuthMiddleware::authenticate();
+    /**
+     * Получить все транзакции (для админа)
+     * GET /api/transactions
+     */
+    public function getAllTransactions() {
+        AuthMiddleware::requireRole('admin');
 
-        // Проверка прав: админ или капитан клуба
-        $clubId = isset($_GET['club_id']) ? $_GET['club_id'] : null;
+        $query = "
+        SELECT 
+            bt.id AS transaction_id,
+            bt.user_id AS user_id,
+            bt.created_at AS transaction_date,
+            u.first_name AS user_first_name,
+            u.last_name AS user_last_name,
+            u.email AS user_email,
+            bt.transaction_type AS transaction_type,
+            bt.amount AS amount,
+            bt.currency AS currency,
+            bt.payment_id AS payment_id,
+            bt.description AS description,
+            c.id AS club_id,
+            c.name AS club_name,
+            e.id AS event_id,
+            e.title AS event_title,
+            bt.balance_before,
+            bt.balance_after,
+            bt.metadata
+        FROM balance_transactions bt
+        INNER JOIN users u 
+            ON u.id = bt.user_id
+        LEFT JOIN clubs c 
+            ON c.id = bt.club_id
+        LEFT JOIN events e 
+            ON e.id = bt.event_id
+        ORDER BY bt.created_at DESC
+    ";
 
-        if ($payload['role'] !== 'admin' && !empty($clubId)) {
-            $isClubCaptain = $this->checkClubLeadership($payload['user_id'], $clubId);
-            if (!$isClubCaptain) {
-                return Response::error("Unauthorized to view payment stats", 403);
+        try {
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Преобразование типов данных
+            foreach ($transactions as &$transaction) {
+                $transaction['transaction_id'] = (int)$transaction['transaction_id'];
+                $transaction['user_id'] = (int)$transaction['user_id'];
+                $transaction['amount'] = (float)$transaction['amount'];
+                $transaction['balance_before'] = (float)$transaction['balance_before'];
+                $transaction['balance_after'] = (float)$transaction['balance_after'];
+
+                // Опциональные поля
+                $transaction['payment_id'] = $transaction['payment_id'] !== null
+                    ? (int)$transaction['payment_id']
+                    : null;
+                $transaction['club_id'] = $transaction['club_id'] !== null
+                    ? (int)$transaction['club_id']
+                    : null;
+                $transaction['event_id'] = $transaction['event_id'] !== null
+                    ? (int)$transaction['event_id']
+                    : null;
+
+                $transaction['transaction_date'] = date(
+                    'Y-m-d H:i:s',
+                    strtotime($transaction['transaction_date'])
+                );
+
+                // Парсинг JSON metadata если есть
+                if ($transaction['metadata'] && $transaction['metadata'] !== 'null') {
+                    $transaction['metadata'] = json_decode($transaction['metadata'], true);
+                } else {
+                    $transaction['metadata'] = [];
+                }
             }
+
+            Response::success('Все транзакции успешно получены', $transactions);
+
+        } catch (PDOException $e) {
+            Response::error(
+                'Ошибка при получении транзакций: ' . $e->getMessage(),
+                null,
+                500
+            );
         }
-
-        $stats = $this->paymentModel->getStats($clubId);
-
-        return Response::success($stats);
     }
+
+
+
 
     // Оплатить клубный взнос (без параметров)
     public function payClubFee() {
@@ -295,7 +417,6 @@ class PaymentController {
         return Response::error("Failed to process club fee payment", 500);
     }
 
-    // Получить баланс текущего пользователя (без параметров)
     public function getUserBalance() {
         $payload = AuthMiddleware::authenticate();
         $userId = $payload['user_id'];
@@ -306,43 +427,20 @@ class PaymentController {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$user) {
-            return Response::error("User not found", 404);
+            Response::error("User not found", null, 404);
+            return;
         }
 
-        return Response::success([
-            'balance' => $user['balance'],
+        $balanceData = [
+            'balance' => (float)$user['balance'],
             'currency' => $user['currency']
-        ]);
+        ];
+
+        Response::success('Баланс успешно получен', $balanceData);
     }
 
     // Получить историю транзакций баланса (без параметров)
-    public function getBalanceTransactions() {
-        $payload = AuthMiddleware::authenticate();
-        $userId = $payload['user_id'];
 
-        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
-        $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
-
-        $query = "SELECT bt.*, 
-                         c.name as club_name,
-                         e.title as event_title
-                  FROM balance_transactions bt
-                  LEFT JOIN clubs c ON bt.club_id = c.id
-                  LEFT JOIN events e ON bt.event_id = e.id
-                  WHERE bt.user_id = :user_id
-                  ORDER BY bt.created_at DESC
-                  LIMIT :limit OFFSET :offset";
-
-        $stmt = $this->db->prepare($query);
-        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        return Response::success($transactions);
-    }
 
     // server/controllers/PaymentController.php
 
@@ -556,4 +654,6 @@ class PaymentController {
             return Response::error("Internal server error", 500);
         }
     }
+
+
 }
