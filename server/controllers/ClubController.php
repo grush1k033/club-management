@@ -109,65 +109,172 @@ class ClubController {
         Response::success('Информация о клубе', $clubData);
     }
 
-    // Создание клуба
+    // server/controllers/ClubController.php
+
+    /**
+     * Создать новый клуб
+     * POST /api/clubs
+     */
     public function create() {
-        $data = json_decode(file_get_contents('php://input'), true);
+        try {
+            // Проверяем права доступа (только админ)
+            AuthMiddleware::requireRole('admin');
 
-        if (!$data) {
-            Response::error('Неверный формат данных', [], 400);
-        }
+            // Получаем данные из тела запроса
+            $data = json_decode(file_get_contents('php://input'), true);
 
-        // Валидация
-        $rules = [
-            'name' => 'required|min:3|max:100',
-            'description' => 'required|min:10|max:500',
-            'category' => 'required|min:2|max:50',
-            'email' => 'required|email',
-            'phone' => 'required|min:10|max:20',
-            'captain_id' => 'required|integer'
-        ];
+            if (empty($data)) {
+                Response::error('Нет данных для создания клуба', [], 400);
+                return;
+            }
 
-        // Опциональные поля
-        if (isset($data['vice_captain_id']) && $data['vice_captain_id'] !== '') {
-            $rules['vice_captain_id'] = 'integer';
-        }
-        if (isset($data['status'])) {
-            $rules['status'] = 'in:Active,Inactive,Pending';
-        }
+            // Валидация обязательных полей
+            $requiredFields = ['name', 'category'];
+            foreach ($requiredFields as $field) {
+                if (empty($data[$field])) {
+                    Response::error("Обязательное поле '$field' не заполнено", [], 400);
+                    return;
+                }
+            }
 
-        $errors = $this->validator->validate($data, $rules);
-        if (!empty($errors)) {
-            Response::error('Ошибка валидации', $errors, 400);
-        }
+            // Начало транзакции
+            $this->db->beginTransaction();
 
-        // Заполняем модель
-        $this->clubModel->name = $data['name'];
-        $this->clubModel->description = $data['description'];
-        $this->clubModel->category = $data['category'];
-        $this->clubModel->email = $data['email'];
-        $this->clubModel->phone = $data['phone'];
-        $this->clubModel->captain_id = $data['captain_id'];
+            // Подготавливаем данные для вставки
+            $fields = [
+                'name' => trim($data['name']),
+                'category' => trim($data['category']),
+                'status' => isset($data['status']) ? $data['status'] : 'Active',
+                'description' => isset($data['description']) ? trim($data['description']) : null,
+                'email' => isset($data['email']) ? trim($data['email']) : null,
+                'phone' => isset($data['phone']) ? trim($data['phone']) : null,
+                'captain_id' => isset($data['captain_id']) ? (int)$data['captain_id'] : null,
+                'vice_captain_id' => isset($data['vice_captain_id']) ? (int)$data['vice_captain_id'] : null
+            ];
 
-        // Обработка vice_captain_id - если пусто, то null
-        $this->clubModel->vice_captain_id = isset($data['vice_captain_id']) && $data['vice_captain_id'] !== ''
-            ? (int)$data['vice_captain_id']
-            : null;
+            // Проверяем уникальность названия клуба
+            $checkQuery = "SELECT id FROM clubs WHERE name = :name";
+            $checkStmt = $this->db->prepare($checkQuery);
+            $checkStmt->execute([':name' => $fields['name']]);
 
-        $this->clubModel->status = $data['status'] || 'Active';
+            if ($checkStmt->fetch(PDO::FETCH_ASSOC)) {
+                $this->db->rollBack();
+                Response::error('Клуб с таким названием уже существует', [], 409);
+                return;
+            }
 
-        // Создаем клуб
-        $created = $this->clubModel->create();
+            // Проверяем капитана, если указан
+            if ($fields['captain_id']) {
+                $captainQuery = "SELECT id, role FROM users WHERE id = :captain_id AND is_active = 1";
+                $captainStmt = $this->db->prepare($captainQuery);
+                $captainStmt->execute([':captain_id' => $fields['captain_id']]);
+                $captain = $captainStmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($created) {
-            Response::success('Клуб успешно создан', [
-                'id' => $this->clubModel->id,
-                'name' => $this->clubModel->name
-            ], 201);
-        } else {
-            Response::error('Не удалось создать клуб', [], 500);
+                if (!$captain) {
+                    $this->db->rollBack();
+                    Response::error('Указанный капитан не найден или неактивен', [], 404);
+                    return;
+                }
+
+                // Проверяем, что капитан не является капитаном другого клуба
+                $existingCaptainQuery = "SELECT id FROM clubs WHERE captain_id = :captain_id OR vice_captain_id = :captain_id";
+                $existingCaptainStmt = $this->db->prepare($existingCaptainQuery);
+                $existingCaptainStmt->execute([':captain_id' => $fields['captain_id']]);
+
+                if ($existingCaptainStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $this->db->rollBack();
+                    Response::error('Этот пользователь уже является капитаном или вице-капитаном другого клуба', [], 400);
+                    return;
+                }
+            }
+
+            // Проверяем вице-капитана, если указан
+            if ($fields['vice_captain_id']) {
+                $viceCaptainQuery = "SELECT id, role FROM users WHERE id = :vice_captain_id AND is_active = 1";
+                $viceCaptainStmt = $this->db->prepare($viceCaptainQuery);
+                $viceCaptainStmt->execute([':vice_captain_id' => $fields['vice_captain_id']]);
+                $viceCaptain = $viceCaptainStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$viceCaptain) {
+                    $this->db->rollBack();
+                    Response::error('Указанный вице-капитан не найден или неактивен', [], 404);
+                    return;
+                }
+
+                // Проверяем, что вице-капитан не является капитаном другого клуба
+                $existingViceCaptainQuery = "SELECT id FROM clubs WHERE captain_id = :vice_captain_id OR vice_captain_id = :vice_captain_id";
+                $existingViceCaptainStmt = $this->db->prepare($existingViceCaptainQuery);
+                $existingViceCaptainStmt->execute([':vice_captain_id' => $fields['vice_captain_id']]);
+
+                if ($existingViceCaptainStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $this->db->rollBack();
+                    Response::error('Этот пользователь уже является капитаном или вице-капитаном другого клуба', [], 400);
+                    return;
+                }
+            }
+
+            // Подготавливаем SQL запрос
+            $sql = "INSERT INTO clubs (name, status, description, category, email, phone, captain_id, vice_captain_id) 
+                VALUES (:name, :status, :description, :category, :email, :phone, :captain_id, :vice_captain_id)";
+
+            $stmt = $this->db->prepare($sql);
+
+            // Биндим параметры
+            $stmt->bindParam(':name', $fields['name']);
+            $stmt->bindParam(':status', $fields['status']);
+            $stmt->bindParam(':description', $fields['description']);
+            $stmt->bindParam(':category', $fields['category']);
+            $stmt->bindParam(':email', $fields['email']);
+            $stmt->bindParam(':phone', $fields['phone']);
+            $stmt->bindParam(':captain_id', $fields['captain_id']);
+            $stmt->bindParam(':vice_captain_id', $fields['vice_captain_id']);
+
+            // Выполняем запрос
+            if ($stmt->execute()) {
+                $clubId = $this->db->lastInsertId();
+
+                // Обновляем club_id у капитана, если он указан
+                if ($fields['captain_id']) {
+                    $updateCaptainQuery = "UPDATE users SET club_id = :club_id WHERE id = :captain_id";
+                    $updateCaptainStmt = $this->db->prepare($updateCaptainQuery);
+                    $updateCaptainStmt->execute([
+                        ':club_id' => $clubId,
+                        ':captain_id' => $fields['captain_id']
+                    ]);
+                }
+
+                // Обновляем club_id у вице-капитана, если он указан
+                if ($fields['vice_captain_id']) {
+                    $updateViceCaptainQuery = "UPDATE users SET club_id = :club_id WHERE id = :vice_captain_id";
+                    $updateViceCaptainStmt = $this->db->prepare($updateViceCaptainQuery);
+                    $updateViceCaptainStmt->execute([
+                        ':club_id' => $clubId,
+                        ':vice_captain_id' => $fields['vice_captain_id']
+                    ]);
+                }
+
+                // Простой запрос для получения созданного клуба
+                $getClubQuery = "SELECT * FROM clubs WHERE id = :club_id";
+                $getClubStmt = $this->db->prepare($getClubQuery);
+                $getClubStmt->execute([':club_id' => $clubId]);
+                $createdClub = $getClubStmt->fetch(PDO::FETCH_ASSOC);
+
+                $this->db->commit();
+
+                Response::success('Клуб успешно создан', $createdClub, 201);
+
+            } else {
+                $this->db->rollBack();
+                Response::error('Ошибка при создании клуба', [], 500);
+            }
+
+        } catch (Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            Response::error('Ошибка при создании клуба: ' . $e->getMessage(), [], 500);
         }
     }
-// В классе ClubController добавьте этот метод:
 
     public function update($clubId, $payload) {
         // Получаем данные запроса
@@ -520,8 +627,6 @@ class ClubController {
         }
     }
 
-    // server/controllers/ClubController.php
-// Добавьте этот метод в класс ClubController
 
     public function getPlatformStats($payload = null) {
         try {
