@@ -7,10 +7,6 @@ class Payment {
         $this->db = $db;
     }
 
-    // ==============================
-    // CREATE METHODS
-    // ==============================
-
     public function create($data) {
         $event_id = isset($data['event_id']) ? $data['event_id'] : null;
         $is_cross_club_event = isset($data['is_cross_club_event']) ? $data['is_cross_club_event'] : false;
@@ -186,10 +182,6 @@ class Payment {
         }
     }
 
-    // ==============================
-    // GET METHODS
-    // ==============================
-
     public function getById($id) {
         $query = "SELECT p.*, 
                          u.email as user_email, 
@@ -307,7 +299,6 @@ class Payment {
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-
     public function getClubPayments($clubId, $filters = []) {
         $where = ["p.target_club_id = :club_id"];
         $params = [':club_id' => $clubId];
@@ -355,7 +346,6 @@ class Payment {
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-
     public function getStats($clubId = null) {
         $where = $clubId ? "WHERE target_club_id = :club_id" : "";
         $params = $clubId ? [':club_id' => $clubId] : [];
@@ -381,10 +371,6 @@ class Payment {
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-
-    // ==============================
-    // UPDATE METHODS
-    // ==============================
 
     public function updateStatus($id, $status, $transactionId = null) {
         $query = "UPDATE {$this->table} 

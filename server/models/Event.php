@@ -11,10 +11,6 @@ class Event
         $this->db = $db;
     }
 
-
-    /**
-     * Получить мероприятия клуба
-     */
     public function getClubEvents($club_id)
     {
         $query = "SELECT e.*, 
@@ -33,9 +29,6 @@ class Event
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Получить мероприятие по ID
-     */
     public function getById($id)
     {
         $query = "SELECT e.*, c.name as club_name, 
@@ -52,9 +45,6 @@ class Event
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Проверить, является ли пользователь участником мероприятия
-     */
     public function isUserParticipant($event_id, $user_id)
     {
         $query = "SELECT id FROM event_participants 
@@ -67,9 +57,6 @@ class Event
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Получить мероприятия пользователя
-     */
     public function getUserEvents($user_id, $status = null)
     {
         $query = "SELECT e.*, c.name as club_name, ep.status as participation_status
@@ -95,9 +82,6 @@ class Event
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Обновить статус мероприятия
-     */
     public function updateStatus($id, $status)
     {
         $allowedStatuses = ['scheduled', 'ongoing', 'completed', 'cancelled'];
@@ -115,9 +99,6 @@ class Event
         return $stmt->execute();
     }
 
-    /**
-     * Обновить мероприятие
-     */
     public function update($id, $data)
     {
         $fields = [];
@@ -146,9 +127,6 @@ class Event
         return $stmt->execute();
     }
 
-    /**
-     * Удалить мероприятие
-     */
     public function delete($id)
     {
         $query = "DELETE FROM events WHERE id = :id";
@@ -158,7 +136,6 @@ class Event
         return $stmt->execute();
     }
 
-    // В models/Event.php добавьте:
 
     public function getEventsByUserId($userId)
     {

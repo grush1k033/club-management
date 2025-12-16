@@ -266,11 +266,11 @@ class UserController
 
             // Получаем информацию о пользователе, которого обновляем
             $getUserQuery = "
-        SELECT u.*, c.captain_id, c.vice_captain_id 
-        FROM users u
-        LEFT JOIN clubs c ON u.club_id = c.id
-        WHERE u.id = :user_id
-    ";
+            SELECT u.*, c.captain_id, c.vice_captain_id 
+            FROM users u
+            LEFT JOIN clubs c ON u.club_id = c.id
+            WHERE u.id = :user_id
+        ";
 
             $getUserStmt = $this->db->prepare($getUserQuery);
             $getUserStmt->execute(['user_id' => $userId]);
@@ -296,10 +296,10 @@ class UserController
                 // Проверяем, что текущий пользователь - капитан или вице-капитан клуба
                 if ($userToUpdate['club_id']) {
                     $checkClubAccessQuery = "
-                SELECT id FROM clubs 
-                WHERE id = :club_id 
-                AND (captain_id = :current_user_id OR vice_captain_id = :current_user_id)
-            ";
+                    SELECT id FROM clubs 
+                    WHERE id = :club_id 
+                    AND (captain_id = :current_user_id OR vice_captain_id = :current_user_id)
+                ";
                     $checkClubAccessStmt = $this->db->prepare($checkClubAccessQuery);
                     $checkClubAccessStmt->execute([
                         'club_id' => $userToUpdate['club_id'],
@@ -319,7 +319,6 @@ class UserController
             // Определяем доступные поля в зависимости от того, кто обновляет
 
             // Поля, которые может обновлять сам пользователь для себя
-            // ВСЕ поля кроме balance, role (исключение - только admin может менять role)
             $selfUpdateFields = ['email', 'first_name', 'last_name', 'phone', 'password'];
 
             // Поля, которые может обновлять владелец клуба для участников своего клуба
@@ -340,26 +339,24 @@ class UserController
             } else if ($currentUserId == $userId) {
                 // Пользователь обновляет себя самого - может все кроме balance
                 $allowedFields = $selfUpdateFields;
+            }
 
-                // Сам пользователь НЕ может менять себе:
-                // 1. role (только админ)
-                // 2. balance (только админ)
-                // 3. club_id (это делается через вступление/выход из клуба)
-                // 4. is_active (только админ или капитан клуба)
-                // 5. currency (только админ)
+            // Создаем копию input для фильтрации
+            $filteredInput = $input;
 
-                // Удаляем недопустимые поля, если они пришли в запросе
+            // Если пользователь обновляет себя и не админ, удаляем запрещенные поля
+            if ($currentUserId == $userId && $currentUserRole !== 'admin') {
                 $invalidSelfFields = ['role', 'balance', 'club_id', 'is_active', 'currency'];
                 foreach ($invalidSelfFields as $field) {
-                    if (isset($input[$field])) {
-                        unset($input[$field]); // Игнорируем эти поля при самообновлении
+                    if (isset($filteredInput[$field])) {
+                        unset($filteredInput[$field]);
                     }
                 }
             }
 
             // Фильтруем входные данные, оставляя только разрешенные поля
             $updateData = [];
-            foreach ($input as $field => $value) {
+            foreach ($filteredInput as $field => $value) {
                 if (in_array($field, $allowedFields)) {
                     // Особые проверки для некоторых полей
                     if ($field === 'email') {
@@ -385,9 +382,9 @@ class UserController
             }
 
             // Обработка пароля отдельно
-            if (isset($input['password']) && !empty($input['password'])) {
+            if (isset($filteredInput['password']) && !empty($filteredInput['password'])) {
                 if (in_array('password', $allowedFields)) {
-                    $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+                    $hashedPassword = password_hash($filteredInput['password'], PASSWORD_DEFAULT);
                     $updateData['password'] = $hashedPassword;
                 }
             }
@@ -430,13 +427,13 @@ class UserController
 
             // Получаем обновленного пользователя
             $getUpdatedUserQuery = "
-        SELECT 
-            u.*,
-            c.name as club_name
-        FROM users u
-        LEFT JOIN clubs c ON u.club_id = c.id
-        WHERE u.id = :id
-    ";
+            SELECT 
+                u.*,
+                c.name as club_name
+            FROM users u
+            LEFT JOIN clubs c ON u.club_id = c.id
+            WHERE u.id = :id
+        ";
 
             $getUpdatedUserStmt = $this->db->prepare($getUpdatedUserQuery);
             $getUpdatedUserStmt->execute(['id' => $userId]);
